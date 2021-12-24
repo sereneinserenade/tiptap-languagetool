@@ -1,48 +1,77 @@
-import { Extension, } from '@tiptap/core'
-import { Decoration, DecorationSet, EditorView } from 'prosemirror-view'
+import { Extension } from '@tiptap/core'
+import { Decoration, DecorationSet, EditorView, InlineDecorationSpec } from 'prosemirror-view'
 import { Plugin, PluginKey, TextSelection } from 'prosemirror-state'
 import { Node as ProsemirrorNode } from 'prosemirror-model'
+import { findBlockNodes } from 'prosemirror-utils'
 import { debounce } from 'lodash'
-
-function renderIcon(issue: any) {
-  const icon: any = document.createElement('div')
-
-  icon.className = 'lint-icon'
-  icon.title = issue.message
-  icon.issue = issue
-
-  return icon
-}
-
-function runAllLinterPlugins(doc: ProsemirrorNode, plugins: any[]) {
-  const decorations: [any?] = []
-
-  const results = plugins.map(lp => new lp(doc).scan().getResults()).flat()
-
-  results.forEach(issue => {
-    decorations.push(Decoration.inline(issue.from, issue.to, { class: 'problem', }), Decoration.widget(issue.from, renderIcon(issue)))
-  })
-
-  return DecorationSet.create(doc, decorations)
-}
+import { LanguageToolResponse } from '../../types'
+import { NodeWithPos } from '@tiptap/vue-3'
 
 let editorView: EditorView<any>;
 
-// const apiRequest = (matching) => {
-//   setTimeout(() => {
-//     let newDecs = decorateNodes(matching)
-//     EditorView.dispatch(EditorView.state.tr.setMeta("asyncDecorations", newDecs))
-//   }, 100);
-// }
+enum LanguageToolWords {
+  TransactionMetaName = 'languageToolDecorations'
+}
 
-// let debouncedApiRequest = debounce(apiRequest, 1000);
+interface LanguageToolPromiseResult {
+  item: NodeWithPos;
+  languageToolResponse: LanguageToolResponse;
+}
 
-export const LanguageTool = Extension.create<any>({
+const createDecorationsAndUpdateState = (res: LanguageToolPromiseResult[]): void => {
+  const view = editorView
+  const { state } = view
+
+  const decorations: Decoration<{ [key: string]: any } & InlineDecorationSpec>[] = [];
+
+  res.forEach(({ languageToolResponse, item }) => {
+    const pos = item.pos
+    const matches = languageToolResponse.matches
+    const node = item.node
+
+
+    for (const match of matches) {
+      const from = pos + match.offset
+      const to = from + match.length
+
+      const decoration = Decoration.inline(from, to, {
+        class: 'lt-thing',
+      })
+
+      decorations.push(decoration)
+    }
+  })
+
+  view.dispatch(state.tr.setMeta(LanguageToolWords.TransactionMetaName, decorations))
+}
+
+const apiRequest = (doc: ProsemirrorNode<any>, apiUrl: string) => {
+  const view = editorView
+
+  const blockNodes = findBlockNodes(doc).filter(item => item.node.isTextblock && !item.node.type.spec.code && item.node.textContent.length);
+
+  const promises = blockNodes.map(async item => {
+    const languageToolResponse: LanguageToolResponse = await (await fetch(`${apiUrl}${item.node.textContent}`)).json()
+    return { item, languageToolResponse }
+  })
+
+  Promise.all(promises).then(createDecorationsAndUpdateState)
+}
+
+let debouncedApiRequest = debounce(apiRequest, 1000);
+
+interface LanguageToolOptions {
+  language: string,
+  apiUrl: string
+}
+
+export const LanguageTool = Extension.create<LanguageToolOptions>({
   name: 'languagetool',
 
   addOptions() {
     return {
       language: 'en-US',
+      apiUrl: 'http://localhost:8081/v2/check'
     }
   },
 
@@ -53,6 +82,7 @@ export const LanguageTool = Extension.create<any>({
   },
 
   addProseMirrorPlugins() {
+    const { language, apiUrl } = this.options
 
     return [
       new Plugin({
@@ -62,45 +92,34 @@ export const LanguageTool = Extension.create<any>({
         },
         state: {
           init: (config, state) => {
+            const finalUrl = `${apiUrl}?language=${language}&text=`
+            apiRequest(state.doc, finalUrl)
+
             return DecorationSet.create(state.doc, [])
           },
           apply: (tr, decorationSet) => {
+            const { doc } = tr
             if (tr.docChanged) {
-              const { doc } = tr
-              // Find all nodes with text to send to the spell checker
-              const nodesWithText = doc.descendants((node) => {
-                if (node.isText) {
-                  const text = node.text
+              const finalUrl = `${apiUrl}?language=${language}&text=`
 
-                  if (text) {
-                    fetch(`http://localhost:8081/v2/check?language=en-US&text=${text}`)
-                      .then((res) => console.log(res.json()))
-                  }
-                }
-              })
-              // const matching = findBlockNodes(doc).filter((item) => item.node.isTextblock && !item.node.type.spec.code);
-              // debouncedApiRequest(matching);
+              debouncedApiRequest(doc, finalUrl)
             }
 
-            // const asyncDecs = tr.getMeta("asyncDecorations")
-            // if (asyncDecs === undefined && !tr.docChanged) {
-            //   return decorationSet
-            // }
+            const languageToolDecorations = tr.getMeta(LanguageToolWords.TransactionMetaName)
 
-            // console.log('received async decorations', asyncDecs);
+            if (languageToolDecorations === undefined && !tr.docChanged) return decorationSet
 
-            return decorationSet
+            return DecorationSet.create(doc, languageToolDecorations)
           },
         },
-        view: function (view) {
+        view: (view) => {
           return {
-            update(view, prevState) {
+            update(view) {
               editorView = view;
             }
           }
         }
       })
-
     ]
   },
 })

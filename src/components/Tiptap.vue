@@ -20,5 +20,9 @@ const editor = useEditor({
 
 .ProseMirror-focused {
   outline: none !important;
+  
+  .lt-thing {
+    background-color: rgba($color: cornflowerblue, $alpha: 0.25) ;
+  }
 }
 </style>
