@@ -1,0 +1,1 @@
+export { LanguageTool } from './languagetool'
