@@ -1,12 +1,12 @@
-<script setup lang="ts">
-import { Tiptap } from './components'
-</script>
-
 <template>
   <div id="app">
     <tiptap />
   </div>
 </template>
+
+<script lang="ts" setup>
+import { Tiptap } from "./components";
+</script>
 
 <style lang="scss">
 #app {

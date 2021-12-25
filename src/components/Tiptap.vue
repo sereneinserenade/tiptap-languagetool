@@ -1,42 +1,55 @@
 <template>
   <button @click="updateHtml">html</button>
   <editor-content :editor="editor" />
-  <div>
-    <pre> {{ html }} </pre>
-  </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue"
-import { useEditor, EditorContent } from '@tiptap/vue-3'
-import StarterKit from '@tiptap/starter-kit'
-import { LanguageTool } from './extensions/languagetool'
-import { content } from './text'
-
-const html = ref('');
+import { ref } from "vue";
+import { useEditor, EditorContent } from "@tiptap/vue-3";
+import StarterKit from "@tiptap/starter-kit";
+import { LanguageTool } from "./extensions/languagetool";
+import { content } from "./text";
 
 const editor = useEditor({
   content,
   extensions: [StarterKit, LanguageTool],
-})
+});
 
-const updateHtml = () => html.value = editor.value.getHTML().trim()
+const updateHtml = () => navigator.clipboard.writeText(editor.value.getHTML());
 </script>
 
 <style lang="scss">
 .ProseMirror {
   .lt {
-    background: rgba($color: grey, $alpha: 0.1) ;
+    border-bottom: 2px solid #e86a69;
+    transition: background 0.25s ease-in-out;
 
-    &-Hint {
+    &:hover {
+      background: rgba($color: #e86a69, $alpha: 0.2);
+    }
+
+    &-style {
       border-bottom: 2px solid #9d8eff;
+
+      &:hover {
+        background: rgba($color: #9d8eff, $alpha: 0.2) !important;
+      }
+    }
+
+    &-typographical,
+    &-grammar {
+      border-bottom: 2px solid #eeb55c;
+
+      &:hover {
+        background: rgba($color: #eeb55c, $alpha: 0.2) !important;
+      }
     }
 
     &-misspelling {
       border-bottom: 2px solid #e86a69;
 
-      ::hover {
-        background: rgba($color: #e86a69, $alpha: 0.25) ;
+      &:hover {
+        background: rgba($color: #e86a69, $alpha: 0.2) !important;
       }
     }
   }
