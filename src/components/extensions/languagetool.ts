@@ -3,7 +3,14 @@ import { Decoration, DecorationSet, EditorView, InlineDecorationSpec } from 'pro
 import { Plugin, PluginKey, TextSelection } from 'prosemirror-state'
 import { Node as ProsemirrorNode } from 'prosemirror-model'
 import { debounce } from 'lodash'
+import { getChangedNodes } from '@remirror/core-utils';
 import { LanguageToolResponse } from '../../types'
+
+const possibleIssueTypes = ['addition', 'characters', 'duplication', 'formatting', 'grammar', 'inconsistency', 'inconsistententities', 'internationalization', 'legal', 'length', 'localespecificcontent', 'localeviolation', 'markup', 'misspelling', 'mistranslation', 'nonconformance', 'numbers', 'omission', 'other', 'patternproblem', 'register', 'style', 'terminology', 'typographical', 'uncategorized', 'untranslated', 'whitespace']
+
+let editorView: EditorView<any>;
+
+let decorationSet: DecorationSet;
 
 const flatten = (node: ProsemirrorNode) => {
   if (!node) throw new Error('Invalid "node" parameter')
@@ -21,7 +28,28 @@ const findChildren = (node: ProsemirrorNode, predicate: Predicate): NodeWithPos[
 
 const findBlockNodes = (node: ProsemirrorNode): NodeWithPos[] => findChildren(node, (child) => child.isBlock);
 
-let editorView: EditorView<any>;
+export function changedDescendants(old: ProsemirrorNode, cur: ProsemirrorNode, offset: number, f: (node: ProsemirrorNode, pos: number) => void) {
+  let oldSize = old.childCount, curSize = cur.childCount
+  outer: for (let i = 0, j = 0; i < curSize; i++) {
+    let child = cur.child(i)
+
+    for (let scan = j, e = Math.min(oldSize, i + 3); scan < e; scan++) {
+      if (old.child(scan) == child) {
+        j = scan + 1
+        offset += child.nodeSize
+        continue outer
+      }
+    }
+
+    f(child, offset)
+
+    if (j < oldSize && old.child(j).sameMarkup(child)) changedDescendants(old.child(j), child, offset + 1, f)
+
+    else child.nodesBetween(0, child.content.size, f, offset + 1)
+
+    offset += child.nodeSize;
+  }
+}
 
 enum LanguageToolWords {
   TransactionMetaName = 'languageToolDecorations'
@@ -46,7 +74,9 @@ const createDecorationsAndUpdateState = (res: LanguageToolPromiseResult[]): void
       const from = pos + match.offset
       const to = from + match.length
 
-      const decoration = Decoration.inline(from, to, { class: 'lt-thing', nodeName: 'span' })
+      // debugger
+
+      const decoration = Decoration.inline(from, to, { class: `lt lt-${match.rule.issueType}`, nodeName: 'span' })
 
       decorations.push(decoration)
     }
@@ -131,16 +161,23 @@ export const LanguageTool = Extension.create<LanguageToolOptions>({
             const finalUrl = `${apiUrl}?language=${language}&text=`
             apiRequest(state.doc, finalUrl)
 
-            return DecorationSet.create(state.doc, [])
+            decorationSet = DecorationSet.create(state.doc, [])
+
+            return decorationSet
           },
           apply: (tr, decorationSet) => {
             const languageToolDecorations = tr.getMeta(LanguageToolWords.TransactionMetaName)
 
-            if (languageToolDecorations) return DecorationSet.create(tr.doc, languageToolDecorations)
+            if (languageToolDecorations) {
+              decorationSet = DecorationSet.create(tr.doc, languageToolDecorations)
+              return decorationSet
+            }
 
             if (tr.docChanged) debouncedApiRequest(tr.doc, `${apiUrl}?language=${language}&text=`)
 
-            return decorationSet.map(tr.mapping, tr.doc)
+            decorationSet = decorationSet.map(tr.mapping, tr.doc)
+
+            return decorationSet
           },
         },
         view: (view) => {

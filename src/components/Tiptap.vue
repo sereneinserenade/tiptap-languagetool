@@ -10,12 +10,13 @@
 import { ref } from "vue"
 import { useEditor, EditorContent } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
-import { LanguageTool } from './extensions'
+import { LanguageTool } from './extensions/languagetool'
+import { content } from './text'
 
 const html = ref('');
 
 const editor = useEditor({
-  content: '<p>LanguageTool Extensioon is the best onee there shud be.</p><p><br class="ProseMirror-trailingBreak"></p><p>Atlestt I thinkk</p>',
+  content,
   extensions: [StarterKit, LanguageTool],
 })
 
@@ -24,8 +25,20 @@ const updateHtml = () => html.value = editor.value.getHTML().trim()
 
 <style lang="scss">
 .ProseMirror {
-  .lt-thing {
-    background-color: rgba($color: cornflowerblue, $alpha: 0.25);
+  .lt {
+    background: rgba($color: grey, $alpha: 0.1) ;
+
+    &-Hint {
+      border-bottom: 2px solid #9d8eff;
+    }
+
+    &-misspelling {
+      border-bottom: 2px solid #e86a69;
+
+      ::hover {
+        background: rgba($color: #e86a69, $alpha: 0.25) ;
+      }
+    }
   }
 
   &-focused {
