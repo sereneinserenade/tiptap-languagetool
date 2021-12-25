@@ -99,6 +99,32 @@ export const LanguageTool = Extension.create<LanguageToolOptions>({
         key: new PluginKey('languagetool'),
         props: {
           decorations(state) { return this.getState(state) },
+          attributes: {
+            spellcheck: "false"
+          },
+          handleDOMEvents: {
+            // TODO: check this out
+            // contextmenu: (view, event) => {
+            //   let pos = view.posAtCoords({ left: event.clientX, top: event.clientY  })?.pos
+
+            //   if (pos === undefined) return
+
+            //   const { decorations, matches } = this.getState(view.state)
+            //   const deco = (decorations as DecorationSet).find(pos, pos)[0]
+
+            //   if (!deco) return false
+
+            //   const match = matches[deco.spec.id]
+            //   const selectionTransaction = view.state.tr.setSelection(TextSelection.create(view.state.doc, deco.from, deco.to))
+              
+            //   view.dispatch(selectionTransaction)
+
+              // const dialog = new DialogLT(options.editor, view, match)
+              // dialog.init()
+              // event.preventDefault()
+              // return true
+            // }
+          },
         },
         state: {
           init: (config, state) => {
@@ -108,20 +134,13 @@ export const LanguageTool = Extension.create<LanguageToolOptions>({
             return DecorationSet.create(state.doc, [])
           },
           apply: (tr, decorationSet) => {
-            const { doc } = tr
-            if (tr.docChanged) {
-              const finalUrl = `${apiUrl}?language=${language}&text=`
-
-              debouncedApiRequest(doc, finalUrl)
-            }
-
             const languageToolDecorations = tr.getMeta(LanguageToolWords.TransactionMetaName)
 
-            if (languageToolDecorations === undefined && !tr.docChanged) return decorationSet
+            if (languageToolDecorations) return DecorationSet.create(tr.doc, languageToolDecorations)
 
-            if (tr.docChanged && !languageToolDecorations) return decorationSet
+            if (tr.docChanged) debouncedApiRequest(tr.doc, `${apiUrl}?language=${language}&text=`)
 
-            return DecorationSet.create(doc, languageToolDecorations)
+            return decorationSet.map(tr.mapping, tr.doc)
           },
         },
         view: (view) => {
@@ -130,7 +149,7 @@ export const LanguageTool = Extension.create<LanguageToolOptions>({
               editorView = view;
             }
           }
-        }
+        },
       })
     ]
   },
