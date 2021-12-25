@@ -1,11 +1,25 @@
-import { Extension } from '@tiptap/core'
+import { Extension, NodeWithPos, Predicate } from '@tiptap/core'
 import { Decoration, DecorationSet, EditorView, InlineDecorationSpec } from 'prosemirror-view'
 import { Plugin, PluginKey, TextSelection } from 'prosemirror-state'
 import { Node as ProsemirrorNode } from 'prosemirror-model'
-import { findBlockNodes } from 'prosemirror-utils'
 import { debounce } from 'lodash'
 import { LanguageToolResponse } from '../../types'
-import { NodeWithPos } from '@tiptap/vue-3'
+
+const flatten = (node: ProsemirrorNode) => {
+  if (!node) throw new Error('Invalid "node" parameter')
+  let result: { node: ProsemirrorNode; pos: number }[] = []
+  node.descendants((child, pos) => { result.push({ node: child, pos: pos }) });
+  return result
+};
+
+const findChildren = (node: ProsemirrorNode, predicate: Predicate): NodeWithPos[] => {
+  if (!node) throw new Error('Invalid "node" parameter')
+  else if (!predicate) throw new Error('Invalid "predicate" parameter')
+
+  return flatten(node).filter((child) => predicate(child.node))
+};
+
+const findBlockNodes = (node: ProsemirrorNode): NodeWithPos[] => findChildren(node, (child) => child.isBlock);
 
 let editorView: EditorView<any>;
 
@@ -25,18 +39,14 @@ const createDecorationsAndUpdateState = (res: LanguageToolPromiseResult[]): void
   const decorations: Decoration<{ [key: string]: any } & InlineDecorationSpec>[] = [];
 
   res.forEach(({ languageToolResponse, item }) => {
-    const pos = item.pos
+    const pos = item.pos + 1
     const matches = languageToolResponse.matches
-    const node = item.node
-
 
     for (const match of matches) {
       const from = pos + match.offset
       const to = from + match.length
 
-      const decoration = Decoration.inline(from, to, {
-        class: 'lt-thing',
-      })
+      const decoration = Decoration.inline(from, to, { class: 'lt-thing', nodeName: 'span' })
 
       decorations.push(decoration)
     }
@@ -108,6 +118,8 @@ export const LanguageTool = Extension.create<LanguageToolOptions>({
             const languageToolDecorations = tr.getMeta(LanguageToolWords.TransactionMetaName)
 
             if (languageToolDecorations === undefined && !tr.docChanged) return decorationSet
+
+            if (tr.docChanged && !languageToolDecorations) return decorationSet
 
             return DecorationSet.create(doc, languageToolDecorations)
           },

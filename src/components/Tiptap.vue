@@ -18,11 +18,13 @@ const editor = useEditor({
 
 <style lang="scss">
 
-.ProseMirror-focused {
-  outline: none !important;
-  
+.ProseMirror {
   .lt-thing {
     background-color: rgba($color: cornflowerblue, $alpha: 0.25) ;
+  }
+
+  &-focused {
+    outline: none !important;
   }
 }
 </style>

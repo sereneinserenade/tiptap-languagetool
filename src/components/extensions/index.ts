@@ -1,1 +1,1 @@
-export { LanguageTool } from './languagetool'
+export { LanguageTool } from './LanguageTool'
