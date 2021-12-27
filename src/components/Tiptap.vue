@@ -4,15 +4,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
 import { useEditor, EditorContent } from "@tiptap/vue-3";
-import StarterKit from "@tiptap/starter-kit";
-import { LanguageTool } from "./extensions/languagetool";
+// import StarterKit from "@tiptap/starter-kit";
+import Document from "@tiptap/extension-document";
+import Text from "@tiptap/extension-text";
+import History from "@tiptap/extension-history";
+
+import { LanguageTool, Paragraph } from "./extensions";
 import { content } from "./text";
 
 const editor = useEditor({
   content,
-  extensions: [StarterKit, LanguageTool],
+  extensions: [Document, Paragraph, Text, History, LanguageTool],
 });
 
 const updateHtml = () => navigator.clipboard.writeText(editor.value.getHTML());

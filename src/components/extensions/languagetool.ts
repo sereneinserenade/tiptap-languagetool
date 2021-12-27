@@ -5,45 +5,39 @@ import {
   EditorView,
   InlineDecorationSpec,
 } from "prosemirror-view";
-import { Plugin, PluginKey, TextSelection } from "prosemirror-state";
+import {
+  Plugin,
+  PluginKey,
+  TextSelection,
+  Transaction,
+  EditorState,
+} from "prosemirror-state";
 import { Node as ProsemirrorNode } from "prosemirror-model";
 import { debounce } from "lodash";
-import { getChangedNodes } from "@remirror/core-utils";
 import { LanguageToolResponse } from "../../types";
+import { v4 as uuidv4 } from "uuid";
 
-const possibleIssueTypes = [
-  "addition",
-  "characters",
-  "duplication",
-  "formatting",
-  "grammar",
-  "inconsistency",
-  "inconsistententities",
-  "internationalization",
-  "legal",
-  "length",
-  "localespecificcontent",
-  "localeviolation",
-  "markup",
-  "misspelling",
-  "mistranslation",
-  "nonconformance",
-  "numbers",
-  "omission",
-  "other",
-  "patternproblem",
-  "register",
-  "style",
-  "terminology",
-  "typographical",
-  "uncategorized",
-  "untranslated",
-  "whitespace",
-];
+const isTargetNodeOfType = (node: ProsemirrorNode, typeNames: string[]) =>
+  typeNames.includes(node.type.name);
 
-let editorView: EditorView<any>;
+const isNodeHasAttribute = (node: ProsemirrorNode, attrName: string) =>
+  Boolean(node.attrs && node.attrs[attrName]);
+
+let editorView: EditorView;
 
 let decorationSet: DecorationSet;
+
+let gaveIdsOnCreation = false;
+
+interface DecorationAndContent {
+  decorations: Decoration[];
+  textContent: string;
+}
+
+const savedNodesWithDecorationsAndContent: Record<
+  string,
+  DecorationAndContent
+> = {};
 
 const flatten = (node: ProsemirrorNode) => {
   if (!node) throw new Error('Invalid "node" parameter');
@@ -67,34 +61,45 @@ const findChildren = (
 const findBlockNodes = (node: ProsemirrorNode): NodeWithPos[] =>
   findChildren(node, (child) => child.isBlock);
 
-export function changedDescendants(
-  old: ProsemirrorNode,
-  cur: ProsemirrorNode,
-  offset: number,
-  f: (node: ProsemirrorNode, pos: number) => void
-) {
-  const oldSize = old.childCount,
-    curSize = cur.childCount;
-  outer: for (let i = 0, j = 0; i < curSize; i++) {
-    const child = cur.child(i);
+const setLTIds = (
+  transactions: Transaction[],
+  nextState: EditorState,
+  force = false
+) => {
+  const ltUuidAttr = "ltuuid";
+  const tr = nextState.tr;
+  let modified = false;
 
-    for (let scan = j, e = Math.min(oldSize, i + 3); scan < e; scan++) {
-      if (old.child(scan) == child) {
-        j = scan + 1;
-        offset += child.nodeSize;
-        continue outer;
+  if (
+    transactions?.some((transaction) => transaction.docChanged) ||
+    !gaveIdsOnCreation ||
+    force
+  ) {
+    // Adds a unique id to a node
+    nextState.doc.descendants((node, pos) => {
+      if (
+        isTargetNodeOfType(node, ["paragraph", "heading"]) &&
+        !isNodeHasAttribute(node, ltUuidAttr)
+      ) {
+        debugger;
+        const attrs = node.attrs;
+        if (!attrs[ltUuidAttr]) {
+          tr.setNodeMarkup(pos, undefined, {
+            ...attrs,
+            [ltUuidAttr]: uuidv4(),
+          });
+          modified = true;
+        }
       }
-    }
+    });
 
-    f(child, offset);
+    if (!gaveIdsOnCreation) gaveIdsOnCreation = true;
 
-    if (j < oldSize && old.child(j).sameMarkup(child))
-      changedDescendants(old.child(j), child, offset + 1, f);
-    else child.nodesBetween(0, child.content.size, f, offset + 1);
-
-    offset += child.nodeSize;
+    if (force) editorView.dispatch(tr);
   }
-}
+
+  return modified ? tr : null;
+};
 
 enum LanguageToolWords {
   TransactionMetaName = "languageToolDecorations",
@@ -105,9 +110,17 @@ interface LanguageToolPromiseResult {
   languageToolResponse: LanguageToolResponse;
 }
 
-const createDecorationsAndUpdateState = (
-  res: LanguageToolPromiseResult[]
-): void => {
+const createDecorationsAndUpdateState = ({
+  languageToolResponse,
+  item,
+}: LanguageToolPromiseResult): void => {
+  if (!gaveIdsOnCreation) {
+    setTimeout(() => {
+      createDecorationsAndUpdateState({ languageToolResponse, item });
+    }, 200);
+    return;
+  }
+
   const view = editorView;
   const { state } = view;
 
@@ -115,48 +128,55 @@ const createDecorationsAndUpdateState = (
     { [key: string]: any } & InlineDecorationSpec
   >[] = [];
 
-  res.forEach(({ languageToolResponse, item }) => {
-    const pos = item.pos + 1;
-    const matches = languageToolResponse.matches;
+  const pos = item.pos + 1;
+  const matches = languageToolResponse.matches;
 
-    for (const match of matches) {
-      const from = pos + match.offset;
-      const to = from + match.length;
+  for (const match of matches) {
+    const from = pos + match.offset;
+    const to = from + match.length;
 
-      // debugger
+    // debugger;
 
-      const decoration = Decoration.inline(from, to, {
-        class: `lt lt-${match.rule.issueType}`,
-        nodeName: "span",
-      });
+    const decoration = Decoration.inline(from, to, {
+      class: `lt lt-${match.rule.issueType}`,
+      nodeName: "span",
+    });
 
-      decorations.push(decoration);
-    }
-  });
+    decorations.push(decoration);
+  }
 
-  view.dispatch(
-    state.tr.setMeta(LanguageToolWords.TransactionMetaName, decorations)
-  );
+  savedNodesWithDecorationsAndContent[item.node.attrs.ltuuid] = {
+    decorations,
+    textContent: item.node.textContent,
+  };
+
+  debugger;
+
+  view.dispatch(state.tr.setMeta(LanguageToolWords.TransactionMetaName, true));
 };
 
-const apiRequest = (doc: ProsemirrorNode<any>, apiUrl: string) => {
-  const view = editorView;
+const apiRequest = (doc: ProsemirrorNode, apiUrl: string) => {
+  const blockNodes = findBlockNodes(doc)
+    .filter(
+      (item) =>
+        item.node.isTextblock &&
+        !item.node.type.spec.code &&
+        item.node.textContent.length
+    )
+    .filter(
+      (n) =>
+        !Object.keys(savedNodesWithDecorationsAndContent).includes(
+          n.node.attrs.id
+        )
+    );
 
-  const blockNodes = findBlockNodes(doc).filter(
-    (item) =>
-      item.node.isTextblock &&
-      !item.node.type.spec.code &&
-      item.node.textContent.length
-  );
-
-  const promises = blockNodes.map(async (item) => {
+  blockNodes.forEach(async (item) => {
     const languageToolResponse: LanguageToolResponse = await (
       await fetch(`${apiUrl}${item.node.textContent}`)
     ).json();
-    return { item, languageToolResponse };
-  });
 
-  Promise.all(promises).then(createDecorationsAndUpdateState);
+    createDecorationsAndUpdateState({ item, languageToolResponse });
+  });
 };
 
 const debouncedApiRequest = debounce(apiRequest, 1000);
@@ -166,13 +186,18 @@ interface LanguageToolOptions {
   apiUrl: string;
 }
 
+const makeIdAwareRequest = (doc: ProsemirrorNode, apiUrl: string) => {
+  if (gaveIdsOnCreation) apiRequest(doc, apiUrl);
+  else setTimeout(() => makeIdAwareRequest(doc, apiUrl), 200);
+};
+
 export const LanguageTool = Extension.create<LanguageToolOptions>({
   name: "languagetool",
 
   addOptions() {
     return {
       language: "en-US",
-      apiUrl: "http://localhost:8081/v2/check",
+      apiUrl: process.env.VUE_APP_LANGUAGE_TOOL_URL + "/check",
     };
   },
 
@@ -216,7 +241,10 @@ export const LanguageTool = Extension.create<LanguageToolOptions>({
         state: {
           init: (config, state) => {
             const finalUrl = `${apiUrl}?language=${language}&text=`;
-            apiRequest(state.doc, finalUrl);
+
+            if (gaveIdsOnCreation) setLTIds([], state);
+
+            makeIdAwareRequest(state.doc, finalUrl);
 
             decorationSet = DecorationSet.create(state.doc, []);
 
@@ -228,6 +256,14 @@ export const LanguageTool = Extension.create<LanguageToolOptions>({
             );
 
             if (languageToolDecorations) {
+              const decos: Decoration[] = [];
+
+              for (const [, savedNode] of Object.entries(
+                savedNodesWithDecorationsAndContent
+              )) {
+                decos.concat(savedNode.decorations);
+              }
+
               decorationSet = DecorationSet.create(
                 tr.doc,
                 languageToolDecorations
@@ -253,6 +289,8 @@ export const LanguageTool = Extension.create<LanguageToolOptions>({
             },
           };
         },
+        appendTransaction: (transactions, prevState, nextState) =>
+          setLTIds(transactions, nextState),
       }),
     ];
   },
