@@ -19,11 +19,11 @@ interface DecorationAndContent {
   textContent: string
 }
 
-const nodeIdsList: string[] = []
+let nodeIdsList: string[] = []
 
 const savedNodesWithDecorationsAndContent: Record<string, DecorationAndContent> = {}
 
-const cleanSavedDecorations = () => {
+const cleanObsoleteSavedDecorations = () => {
   for (const id of Object.keys(savedNodesWithDecorationsAndContent)) {
     if (!nodeIdsList.includes(id)) delete savedNodesWithDecorationsAndContent[id]
   }
@@ -35,7 +35,11 @@ const getDecorations = (doc: ProsemirrorNode): Decoration[] => {
 
   const blockNodes = findBlockNodes(doc)
 
+  nodeIdsList = []
+
   blockNodes.forEach(({ node, pos }) => {
+    nodeIdsList.push(node.attrs.ltuuid)
+
     pos = pos + 1
     const matches = savedNodesWithDecorationsAndContent[node.attrs.ltuuid]?.matches
 
@@ -56,6 +60,8 @@ const getDecorations = (doc: ProsemirrorNode): Decoration[] => {
       }
     }
   })
+
+  cleanObsoleteSavedDecorations()
 
   return decos
 }
