@@ -1,75 +1,20 @@
 import { Extension, NodeWithPos, Predicate } from '@tiptap/core'
-import { Decoration, DecorationSet, EditorView, InlineDecorationSpec } from 'prosemirror-view'
-import { Plugin, PluginKey, TextSelection, Transaction, EditorState } from 'prosemirror-state'
-import { Node as ProsemirrorNode } from 'prosemirror-model'
+import { Decoration, DecorationSet, EditorView } from 'prosemirror-view'
+import { Plugin, PluginKey } from 'prosemirror-state'
+import { Node as PMNode } from 'prosemirror-model'
 import { debounce } from 'lodash'
-import { LanguageToolResponse, Match } from '../../types'
-import { v4 as uuidv4 } from 'uuid'
-
-const isTargetNodeOfType = (node: ProsemirrorNode, typeNames: string[]) => typeNames.includes(node.type.name)
-
-const isNodeHasAttribute = (node: ProsemirrorNode, attrName: string) => Boolean(node.attrs && node.attrs[attrName])
+import { LanguageToolResponse } from '../../types'
 
 let editorView: EditorView
 
-let gaveIdsOnCreation = false
+let decorationSet: DecorationSet
 
-interface DecorationAndContent {
-  matches: Match[]
-  textContent: string
-}
+let apiUrl = ''
 
-let nodeIdsList: string[] = []
-
-const savedNodesWithDecorationsAndContent: Record<string, DecorationAndContent> = {}
-
-const cleanObsoleteSavedDecorations = () => {
-  for (const id of Object.keys(savedNodesWithDecorationsAndContent)) {
-    if (!nodeIdsList.includes(id)) delete savedNodesWithDecorationsAndContent[id]
-  }
-}
-
-const getDecorations = (doc: ProsemirrorNode): Decoration[] => {
-  // cleanSavedDecorations()
-  const decos: Decoration[] = []
-
-  const blockNodes = findBlockNodes(doc)
-
-  nodeIdsList = []
-
-  blockNodes.forEach(({ node, pos }) => {
-    nodeIdsList.push(node.attrs.ltuuid)
-
-    pos = pos + 1
-    const matches = savedNodesWithDecorationsAndContent[node.attrs.ltuuid]?.matches
-
-    if (matches) {
-      for (const match of matches) {
-        const from = pos + match.offset
-        const to = from + match.length
-
-        // debugger;
-
-        const decoration = Decoration.inline(from, to, {
-          class: `lt lt-${match.rule.issueType}`,
-          nodeName: 'span',
-          match: JSON.stringify(match),
-        })
-
-        decos.push(decoration)
-      }
-    }
-  })
-
-  cleanObsoleteSavedDecorations()
-
-  return decos
-}
-
-const flatten = (node: ProsemirrorNode) => {
+const flatten = (node: PMNode) => {
   if (!node) throw new Error('Invalid "node" parameter')
 
-  const result: { node: ProsemirrorNode; pos: number }[] = []
+  const result: { node: PMNode; pos: number }[] = []
 
   node.descendants((child, pos) => {
     result.push({ node: child, pos: pos })
@@ -78,67 +23,93 @@ const flatten = (node: ProsemirrorNode) => {
   return result
 }
 
-const findChildren = (node: ProsemirrorNode, predicate: Predicate): NodeWithPos[] => {
+const findChildren = (node: PMNode, predicate: Predicate): NodeWithPos[] => {
   if (!node) throw new Error('Invalid "node" parameter')
   else if (!predicate) throw new Error('Invalid "predicate" parameter')
 
   return flatten(node).filter((child) => predicate(child.node))
 }
 
-const findBlockNodes = (node: ProsemirrorNode): NodeWithPos[] => findChildren(node, (child) => child.isBlock)
-
-const setLTIds = (transactions: Transaction[], nextState: EditorState, force = false) => {
-  const ltUuidAttr = 'ltuuid'
-  let tr = nextState.tr
-  let modified = false
-
-  if (transactions?.some((transaction) => transaction.docChanged) || !gaveIdsOnCreation || force) {
-    // Adds a unique id to a node
-    nextState.doc.descendants((node, pos) => {
-      if (isTargetNodeOfType(node, ['paragraph', 'heading']) && !isNodeHasAttribute(node, ltUuidAttr)) {
-        const attrs = node.attrs
-
-        tr = tr.setNodeMarkup(pos, undefined, { ...attrs, [ltUuidAttr]: uuidv4() })
-        modified = true
-      }
-    })
-
-    if (!gaveIdsOnCreation) gaveIdsOnCreation = true
-
-    if (force) editorView.dispatch(tr)
-  }
-
-  return modified ? tr : null
-}
+const findBlockNodes = (node: PMNode): NodeWithPos[] => findChildren(node, (child) => child.isBlock)
 
 enum LanguageToolWords {
   TransactionMetaName = 'languageToolDecorations',
 }
 
-interface LanguageToolPromiseResult {
-  item: NodeWithPos
-  languageToolResponse: LanguageToolResponse
+export function changedDescendants(
+  old: PMNode,
+  cur: PMNode,
+  offset: number,
+  f: (node: PMNode, pos: number, cur: PMNode) => void,
+): void {
+  const oldSize = old.childCount,
+    curSize = cur.childCount
+  outer: for (let i = 0, j = 0; i < curSize; i++) {
+    const child = cur.child(i)
+
+    for (let scan = j, e = Math.min(oldSize, i + 3); scan < e; scan++) {
+      if (old.child(scan) == child) {
+        j = scan + 1
+        offset += child.nodeSize
+        continue outer
+      }
+    }
+
+    f(child, offset, cur)
+
+    if (j < oldSize && old.child(j).sameMarkup(child)) changedDescendants(old.child(j), child, offset + 1, f)
+    else child.nodesBetween(0, child.content.size, f, offset + 1)
+
+    offset += child.nodeSize
+  }
 }
 
-const createDecorationsAndUpdateState = ({ languageToolResponse, item }: LanguageToolPromiseResult): void => {
-  if (!gaveIdsOnCreation) {
-    setTimeout(() => createDecorationsAndUpdateState({ languageToolResponse, item }), 200)
+const proofreadNodeAndUpdateItsDecorations = async (node: PMNode, offset: number, cur: PMNode) => {
+  const ltRes: LanguageToolResponse = await (await fetch(`${apiUrl}${node.textContent}`)).json()
+
+  decorationSet = decorationSet.remove(decorationSet.find(offset, offset + node.nodeSize))
+
+  const nodeSpecificDecorations: Decoration[] = []
+
+  for (const match of ltRes.matches) {
+    const from = match.offset + offset
+    const to = from + match.length
+
+    const decoration = Decoration.inline(from, to, {
+      class: `lt lt-${match.rule.issueType}`,
+      nodeName: 'span',
+      match: JSON.stringify(match),
+    })
+
+    nodeSpecificDecorations.push(decoration)
+  }
+
+  decorationSet = decorationSet.add(cur, nodeSpecificDecorations)
+
+  editorView.dispatch(editorView.state.tr.setMeta(LanguageToolWords.TransactionMetaName, true))
+}
+
+const proofreadAndDecorateWholeDoc = async (doc: PMNode, url: string, whole = true, oldDoc?: PMNode) => {
+  apiUrl = url
+
+  let text = ''
+
+  if (!whole && oldDoc) {
+    changedDescendants(oldDoc, doc, 0, proofreadNodeAndUpdateItsDecorations)
     return
   }
 
-  const view = editorView
-  const { state } = view
+  findBlockNodes(doc).forEach(({ node }) => (text += node.textContent + '  '))
 
-  const decorations: Decoration<{ [key: string]: string } & InlineDecorationSpec>[] = []
+  const ltRes: LanguageToolResponse = await (await fetch(`${apiUrl}${text}`)).json()
 
-  const pos = item.pos + 1
-  const matches = languageToolResponse.matches
+  const { matches } = ltRes
+
+  const decorations: Decoration[] = []
 
   for (const match of matches) {
-    const from = pos + match.offset
+    const from = 1 + match.offset
     const to = from + match.length
-
-    // debugger;
 
     const decoration = Decoration.inline(from, to, {
       class: `lt lt-${match.rule.issueType}`,
@@ -149,31 +120,12 @@ const createDecorationsAndUpdateState = ({ languageToolResponse, item }: Languag
     decorations.push(decoration)
   }
 
-  savedNodesWithDecorationsAndContent[item.node.attrs.ltuuid] = {
-    matches,
-    textContent: item.node.textContent,
-  }
+  decorationSet = DecorationSet.create(doc, decorations)
 
-  // debugger
-
-  view.dispatch(state.tr.setMeta(LanguageToolWords.TransactionMetaName, true))
+  editorView.dispatch(editorView.state.tr.setMeta(LanguageToolWords.TransactionMetaName, true))
 }
 
-const apiRequest = (doc: ProsemirrorNode, apiUrl: string) => {
-  const blockNodes = findBlockNodes(doc)
-    .filter((item) => item.node.isTextblock && !item.node.type.spec.code && item.node.textContent.length)
-    .filter((n) => n.node.textContent !== savedNodesWithDecorationsAndContent[n.node.attrs.ltuuid]?.textContent)
-
-  // debugger
-
-  blockNodes.forEach(async (item) => {
-    const languageToolResponse: LanguageToolResponse = await (await fetch(`${apiUrl}${item.node.textContent}`)).json()
-
-    createDecorationsAndUpdateState({ item, languageToolResponse })
-  })
-}
-
-const debouncedApiRequest = debounce(apiRequest, 1000)
+const debouncedProofreadAndDecorate = debounce(proofreadAndDecorateWholeDoc, 1000)
 
 interface LanguageToolOptions {
   language: string
@@ -185,7 +137,7 @@ export const LanguageTool = Extension.create<LanguageToolOptions>({
 
   addOptions() {
     return {
-      language: 'en-US',
+      language: 'auto',
       apiUrl: process.env.VUE_APP_LANGUAGE_TOOL_URL + '/check',
     }
   },
@@ -233,20 +185,19 @@ export const LanguageTool = Extension.create<LanguageToolOptions>({
           init: (config, state) => {
             const finalUrl = `${apiUrl}?language=${language}&text=`
 
-            if (gaveIdsOnCreation) setLTIds([], state, true)
+            decorationSet = DecorationSet.create(state.doc, [])
 
-            return DecorationSet.create(state.doc, [])
+            proofreadAndDecorateWholeDoc(state.doc, finalUrl)
+
+            return decorationSet
           },
-          apply: (tr, decorationSet) => {
+          apply: (tr, oldDecos, oldState) => {
             const languageToolDecorations = tr.getMeta(LanguageToolWords.TransactionMetaName)
 
-            if (languageToolDecorations) {
-              // debugger
-              const decos = getDecorations(tr.doc)
-              return DecorationSet.create(tr.doc, decos)
-            }
+            if (languageToolDecorations) return decorationSet
 
-            if (tr.docChanged) debouncedApiRequest(tr.doc, `${apiUrl}?language=${language}&text=`)
+            if (tr.docChanged)
+              debouncedProofreadAndDecorate(tr.doc, `${apiUrl}?language=${language}&text=`, false, oldState.doc)
 
             decorationSet = decorationSet.map(tr.mapping, tr.doc)
 
@@ -260,7 +211,6 @@ export const LanguageTool = Extension.create<LanguageToolOptions>({
             },
           }
         },
-        appendTransaction: (transactions, prevState, nextState) => setLTIds(transactions, nextState),
       }),
     ]
   },
