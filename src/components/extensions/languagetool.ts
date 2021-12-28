@@ -89,13 +89,15 @@ const proofreadNodeAndUpdateItsDecorations = async (node: PMNode, offset: number
   editorView.dispatch(editorView.state.tr.setMeta(LanguageToolWords.TransactionMetaName, true))
 }
 
+const debouncedProofreadNodeAndUpdateItsDecorations = debounce(proofreadNodeAndUpdateItsDecorations, 200)
+
 const proofreadAndDecorateWholeDoc = async (doc: PMNode, url: string, whole = true, oldDoc?: PMNode) => {
   apiUrl = url
 
   let text = ''
 
   if (!whole && oldDoc) {
-    changedDescendants(oldDoc, doc, 0, proofreadNodeAndUpdateItsDecorations)
+    changedDescendants(oldDoc, doc, 0, debouncedProofreadNodeAndUpdateItsDecorations)
     return
   }
 
