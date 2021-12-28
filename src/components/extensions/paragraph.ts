@@ -1,53 +1,49 @@
-import { Node, mergeAttributes } from "@tiptap/core";
+import { Node, mergeAttributes } from '@tiptap/core'
 
 export interface ParagraphOptions {
-  HTMLAttributes: Record<string, any>;
+  HTMLAttributes: Record<string, any>
 }
 
-declare module "@tiptap/core" {
+declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     paragraph: {
       /**
        * Toggle a paragraph
        */
-      setParagraph: () => ReturnType;
-    };
+      setParagraph: () => ReturnType
+    }
   }
 }
 
 export const Paragraph = Node.create<ParagraphOptions>({
-  name: "paragraph",
+  name: 'paragraph',
 
   priority: 1000,
 
   addOptions() {
     return {
       HTMLAttributes: {},
-    };
+    }
   },
 
-  group: "block",
+  group: 'block',
 
-  content: "inline*",
+  content: 'inline*',
 
   addAttributes() {
     return {
       ltuuid: {
-        parseHTML: (el) => el.getAttribute("ltuuid"),
+        parseHTML: (el) => el.getAttribute('ltuuid'),
       },
-    };
+    }
   },
 
   parseHTML() {
-    return [{ tag: "p" }];
+    return [{ tag: 'p' }]
   },
 
   renderHTML({ HTMLAttributes }) {
-    return [
-      "p",
-      mergeAttributes(this.options.HTMLAttributes, HTMLAttributes),
-      0,
-    ];
+    return ['p', mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0]
   },
 
   addCommands() {
@@ -55,14 +51,14 @@ export const Paragraph = Node.create<ParagraphOptions>({
       setParagraph:
         () =>
         ({ commands }) => {
-          return commands.setNode(this.name);
+          return commands.setNode(this.name)
         },
-    };
+    }
   },
 
   addKeyboardShortcuts() {
     return {
-      "Mod-Alt-0": () => this.editor.commands.setParagraph(),
-    };
+      'Mod-Alt-0': () => this.editor.commands.setParagraph(),
+    }
   },
-});
+})

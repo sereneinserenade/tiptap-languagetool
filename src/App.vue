@@ -5,7 +5,7 @@
 </template>
 
 <script lang="ts" setup>
-import { Tiptap } from "./components";
+import { Tiptap } from './components'
 </script>
 
 <style lang="scss">

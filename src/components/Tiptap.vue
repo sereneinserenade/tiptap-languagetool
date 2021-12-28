@@ -4,21 +4,21 @@
 </template>
 
 <script setup lang="ts">
-import { useEditor, EditorContent } from "@tiptap/vue-3";
+import { useEditor, EditorContent } from '@tiptap/vue-3'
 // import StarterKit from "@tiptap/starter-kit";
-import Document from "@tiptap/extension-document";
-import Text from "@tiptap/extension-text";
-import History from "@tiptap/extension-history";
+import Document from '@tiptap/extension-document'
+import Text from '@tiptap/extension-text'
+import History from '@tiptap/extension-history'
 
-import { LanguageTool, Paragraph } from "./extensions";
-import { content } from "./text";
+import { LanguageTool, Paragraph } from './extensions'
+import { content } from './text'
 
 const editor = useEditor({
   content,
   extensions: [Document, Paragraph, Text, History, LanguageTool],
-});
+})
 
-const updateHtml = () => navigator.clipboard.writeText(editor.value.getHTML());
+const updateHtml = () => navigator.clipboard.writeText(editor.value.getHTML())
 </script>
 
 <style lang="scss">

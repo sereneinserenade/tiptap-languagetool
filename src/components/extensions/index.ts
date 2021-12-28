@@ -1,2 +1,2 @@
-export { LanguageTool } from "./languagetool";
-export { Paragraph } from "./paragraph";
+export { LanguageTool } from './languagetool'
+export { Paragraph } from './paragraph'
