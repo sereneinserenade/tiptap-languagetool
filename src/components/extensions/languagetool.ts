@@ -37,23 +37,52 @@ enum LanguageToolWords {
   TransactionMetaName = 'languageToolDecorations',
 }
 
+interface TextNodesWithPosition {
+  text: string
+  from: number
+  to: number
+}
+
 const proofreadAndDecorateWholeDoc = async (doc: PMNode, url: string) => {
   apiUrl = url
 
-  let text = ''
+  let textNodesWithPosition: TextNodesWithPosition[] = []
 
-  let lastPos = 0
+  let index = 0
+  doc?.descendants((node, pos) => {
+    if (node.isText) {
+      if (textNodesWithPosition[index]) {
+        const text = textNodesWithPosition[index].text + node.text
+        const from = textNodesWithPosition[index].from
+        const to = from + text.length
 
-  findBlockNodes(doc).forEach(({ node, pos }, index) => {
-    if (index === 0) {
-      lastPos = 0
+        textNodesWithPosition[index] = { text, from, to }
+      } else {
+        const text = node.text
+        const from = pos
+        const to = pos + text.length
+
+        textNodesWithPosition[index] = { text, from, to }
+      }
     } else {
-      const diff = pos - lastPos
-      if (diff > 0) text += Array(diff + 1).join(' ')
+      index += 1
     }
-    lastPos = pos + node.textContent.length
-    text += node.textContent
   })
+
+  textNodesWithPosition = textNodesWithPosition.filter(Boolean)
+
+  debugger
+
+  let finalText = ''
+
+  let lastPos = 1
+  for (const { text, from, to } of textNodesWithPosition) {
+    const diff = from - lastPos
+    if (diff > 0) finalText += Array(diff + 1).join(' ')
+    lastPos = to
+
+    finalText += text
+  }
 
   const ltRes: LanguageToolResponse = await (
     await fetch(apiUrl, {
@@ -62,7 +91,7 @@ const proofreadAndDecorateWholeDoc = async (doc: PMNode, url: string) => {
         'Content-Type': 'application/x-www-form-urlencoded',
         Accept: 'application/json',
       },
-      body: `text=${encodeURIComponent(text)}&language=auto&enabledOnly=false`,
+      body: `text=${encodeURIComponent(finalText)}&language=auto&enabledOnly=false`,
     })
   ).json()
 

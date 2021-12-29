@@ -20,14 +20,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useEditor, EditorContent, BubbleMenu } from '@tiptap/vue-3'
-// import StarterKit from "@tiptap/starter-kit";
-import Document from '@tiptap/extension-document'
-import Text from '@tiptap/extension-text'
-import History from '@tiptap/extension-history'
+import StarterKit from '@tiptap/starter-kit'
+// import Document from '@tiptap/extension-document'
+// import Text from '@tiptap/extension-text'
+// import History from '@tiptap/extension-history'
 
-import { LanguageTool, Paragraph } from './extensions'
+import { LanguageTool } from './extensions'
 import { content } from './text'
 import { Match } from '@/types'
 
@@ -54,8 +54,8 @@ function selectElementText(el) {
   console.log(match.value)
 }
 
-const mouseEnterEventListener = async (e) => {
-  await new Promise((r) => setTimeout(r, 500))
+const mouseEnterEventListener = (e) => {
+  // await new Promise((r) => setTimeout(r, 500))
   left.value = false
 
   activeDecoSpanEl = e.target
@@ -78,18 +78,18 @@ const mouseLeaveEventListener = (e) => {
 
 const addEventListenersToDecorations = () => {
   const decos = document.querySelectorAll('span.lt')
-  decos?.forEach((el) => el.addEventListener('mouseenter', mouseEnterEventListener))
+  decos?.forEach((el) => el.addEventListener('click', mouseEnterEventListener))
   decos?.forEach((el) => el.addEventListener('mouseleave', mouseLeaveEventListener))
 }
 
 const editor = useEditor({
   content,
-  extensions: [Document, Paragraph, Text, History, LanguageTool],
+  extensions: [StarterKit, LanguageTool],
   onUpdate: () => {
     addEventListenersToDecorations()
   },
   onFocus: () => addEventListenersToDecorations(),
-  onTransaction: ({ editor, transaction }) => {
+  onTransaction: ({ transaction }) => {
     const decosUpdated = transaction.getMeta('languageToolDecorations')
 
     if (decosUpdated) addEventListenersToDecorations()
