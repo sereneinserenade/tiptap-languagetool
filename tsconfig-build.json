@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "target": "es2019",
+    "module": "esnext",
+    "strict": true,
+    "jsx": "react",
+    "importHelpers": true,
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "experimentalDecorators": true,
+    "sourceMap": true,
+    "baseUrl": ".",
+    "rootDir": ".",
+    "allowJs": true,
+    "checkJs": false,
+    "lib": [
+      "esnext",
+      "dom",
+      "dom.iterable",
+      "scripthost"
+    ],
+    "outDir": "./dist"
+  },
+  "include": [
+    "./src/components/extensions/languagetool.ts"
+  ],
+  "exclude": [
+    "**/node_modules",
+    "**/dist"
+  ]
+}

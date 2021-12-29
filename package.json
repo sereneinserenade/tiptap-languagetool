@@ -5,7 +5,8 @@
   "scripts": {
     "serve": "vue-cli-service serve --mode development",
     "start": "vue-cli-service serve --mode development",
-    "build": "vue-cli-service build",
+    "build": "npx tsc --p tsconfig-build.json",
+    "build:vue": "vue-cli-service build",
     "lint": "vue-cli-service lint"
   },
   "dependencies": {
