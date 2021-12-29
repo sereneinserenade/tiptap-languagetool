@@ -2,6 +2,7 @@ import { Extension } from '@tiptap/core'
 import { Decoration, DecorationSet } from 'prosemirror-view'
 import { Plugin, PluginKey } from 'prosemirror-state'
 import { debounce } from 'lodash'
+import { v4 as uuidv4 } from 'uuid'
 let editorView
 let decorationSet
 let apiUrl = ''
@@ -23,59 +24,20 @@ var LanguageToolWords
 ;(function (LanguageToolWords) {
   LanguageToolWords['TransactionMetaName'] = 'languageToolDecorations'
 })(LanguageToolWords || (LanguageToolWords = {}))
-export function changedDescendants(old, cur, offset, f) {
-  const oldSize = old.childCount,
-    curSize = cur.childCount
-  outer: for (let i = 0, j = 0; i < curSize; i++) {
-    const child = cur.child(i)
-    for (let scan = j, e = Math.min(oldSize, i + 3); scan < e; scan++) {
-      if (old.child(scan) === child) {
-        j = scan + 1
-        offset += child.nodeSize
-        continue outer
-      }
-    }
-    f(child, offset, cur)
-    if (j < oldSize && old.child(j).sameMarkup(child)) changedDescendants(old.child(j), child, offset + 1, f)
-    else child.nodesBetween(0, child.content.size, f, offset + 1)
-    offset += child.nodeSize
-  }
-}
-const proofreadNodeAndUpdateItsDecorations = async (node, offset, cur) => {
-  const ltRes = await (
-    await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        Accept: 'application/json',
-      },
-      body: `text=${encodeURIComponent(node.textContent)}&language=auto&enabledOnly=false`,
-    })
-  ).json()
-  decorationSet = decorationSet.remove(decorationSet.find(offset, offset + node.nodeSize))
-  const nodeSpecificDecorations = []
-  for (const match of ltRes.matches) {
-    const from = match.offset + offset
-    const to = from + match.length
-    const decoration = Decoration.inline(from, to, {
-      class: `lt lt-${match.rule.issueType}`,
-      nodeName: 'span',
-      match: JSON.stringify(match),
-    })
-    nodeSpecificDecorations.push(decoration)
-  }
-  decorationSet = decorationSet.add(cur, nodeSpecificDecorations)
-  editorView.dispatch(editorView.state.tr.setMeta(LanguageToolWords.TransactionMetaName, true))
-}
-const debouncedProofreadNodeAndUpdateItsDecorations = debounce(proofreadNodeAndUpdateItsDecorations, 200)
-const proofreadAndDecorateWholeDoc = async (doc, url, whole = true, oldDoc) => {
+const proofreadAndDecorateWholeDoc = async (doc, url) => {
   apiUrl = url
   let text = ''
-  if (!whole && oldDoc) {
-    changedDescendants(oldDoc, doc, 0, debouncedProofreadNodeAndUpdateItsDecorations)
-    return
-  }
-  findBlockNodes(doc).forEach(({ node }) => (text += node.textContent + '  '))
+  let lastPos = 0
+  findBlockNodes(doc).forEach(({ node, pos }, index) => {
+    if (index === 0) {
+      lastPos = 0
+    } else {
+      const diff = pos - lastPos
+      if (diff > 0) text += Array(diff + 1).join(' ')
+    }
+    lastPos = pos + node.textContent.length
+    text += node.textContent
+  })
   const ltRes = await (
     await fetch(apiUrl, {
       method: 'POST',
@@ -95,6 +57,7 @@ const proofreadAndDecorateWholeDoc = async (doc, url, whole = true, oldDoc) => {
       class: `lt lt-${match.rule.issueType}`,
       nodeName: 'span',
       match: JSON.stringify(match),
+      uuid: uuidv4(),
     })
     decorations.push(decoration)
   }
@@ -156,7 +119,7 @@ export const LanguageTool = Extension.create({
           apply: (tr, oldDecos, oldState) => {
             const languageToolDecorations = tr.getMeta(LanguageToolWords.TransactionMetaName)
             if (languageToolDecorations) return decorationSet
-            if (tr.docChanged) debouncedProofreadAndDecorate(tr.doc, apiUrl, false, oldState.doc)
+            if (tr.docChanged) debouncedProofreadAndDecorate(tr.doc, apiUrl)
             decorationSet = decorationSet.map(tr.mapping, tr.doc)
             return decorationSet
           },
