@@ -279,7 +279,7 @@ export const LanguageTool = Extension.create<LanguageToolOptions, LanguageToolSt
   },
 
   addProseMirrorPlugins() {
-    const { language, apiUrl } = this.options
+    const { apiUrl } = this.options
 
     return [
       new Plugin({
