@@ -22,12 +22,14 @@ let textNodesWithPosition: TextNodesWithPosition[] = []
 
 let match: Match | undefined = undefined
 
+let proofReadInitially = false
+
 enum LanguageToolHelpingWords {
   LanguageToolTransactionName = 'languageToolTransaction',
   MatchUpdatedTransactionName = 'matchUpdated',
 }
 
-const udpateMatch = (m?: Match) => {
+const updateMatch = (m?: Match) => {
   if (m) match = m
   else match = undefined
 
@@ -48,11 +50,11 @@ const mouseEnterEventListener = (e) => {
 
   const matchString = e.target.getAttribute('match')
 
-  if (matchString) udpateMatch(JSON.parse(matchString))
-  else udpateMatch()
+  if (matchString) updateMatch(JSON.parse(matchString))
+  else updateMatch()
 }
 
-const mouseLeaveEventListener = () => udpateMatch()
+const mouseLeaveEventListener = () => updateMatch()
 
 const addEventListenersToDecorations = () => {
   const decos = document.querySelectorAll('span.lt')
@@ -64,6 +66,70 @@ const addEventListenersToDecorations = () => {
     })
   }
 }
+
+export function changedDescendants(
+  old: PMNode,
+  cur: PMNode,
+  offset: number,
+  f: (node: PMNode, pos: number, cur: PMNode) => void,
+): void {
+  const oldSize = old.childCount,
+    curSize = cur.childCount
+  outer: for (let i = 0, j = 0; i < curSize; i++) {
+    const child = cur.child(i)
+
+    for (let scan = j, e = Math.min(oldSize, i + 3); scan < e; scan++) {
+      if (old.child(scan) === child) {
+        j = scan + 1
+        offset += child.nodeSize
+        continue outer
+      }
+    }
+
+    f(child, offset, cur)
+
+    if (j < oldSize && old.child(j).sameMarkup(child)) changedDescendants(old.child(j), child, offset + 1, f)
+    else child.nodesBetween(0, child.content.size, f, offset + 1)
+
+    offset += child.nodeSize
+  }
+}
+
+const proofreadNodeAndUpdateItsDecorations = async (node: PMNode, offset: number, cur: PMNode) => {
+  const ltRes: LanguageToolResponse = await (
+    await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Accept: 'application/json',
+      },
+      body: `text=${encodeURIComponent(node.textContent)}&language=auto&enabledOnly=false`,
+    })
+  ).json()
+
+  decorationSet = decorationSet.remove(decorationSet.find(offset, offset + node.nodeSize))
+
+  const nodeSpecificDecorations: Decoration[] = []
+
+  for (const match of ltRes.matches) {
+    const from = match.offset + offset
+    const to = from + match.length
+
+    const decoration = Decoration.inline(from, to, {
+      class: `lt lt-${match.rule.issueType}`,
+      nodeName: 'span',
+      match: JSON.stringify(match),
+    })
+
+    nodeSpecificDecorations.push(decoration)
+  }
+
+  decorationSet = decorationSet.add(cur, nodeSpecificDecorations)
+
+  editorView.dispatch(editorView.state.tr.setMeta(LanguageToolHelpingWords.LanguageToolTransactionName, true))
+}
+
+const debouncedProofreadNodeAndUpdateItsDecorations = debounce(proofreadNodeAndUpdateItsDecorations, 200)
 
 const moreThan500Words = (s: string) => s.trim().split(/\s+/).length >= 500
 
@@ -79,7 +145,7 @@ const getMatchAndSetDecorations = async (doc: PMNode, text: string, originalFrom
     })
   ).json()
 
-  debugger
+  // debugger
   const { matches } = ltRes
 
   const decorations: Decoration[] = []
@@ -160,6 +226,7 @@ const proofreadAndDecorateWholeDoc = async (doc: PMNode, url: string) => {
 
     if (moreThan500Words(finalText)) {
       const updatedFrom = chunksOf500Words.length ? upperFrom : upperFrom + 1
+
       chunksOf500Words.push({
         from: updatedFrom,
         text: finalText,
@@ -175,11 +242,13 @@ const proofreadAndDecorateWholeDoc = async (doc: PMNode, url: string) => {
     text: finalText,
   })
 
-  debugger
+  // debugger
 
   for (const { from, text } of chunksOf500Words) {
     getMatchAndSetDecorations(doc, text, from)
   }
+
+  proofReadInitially = true
 }
 
 const debouncedProofreadAndDecorate = debounce(proofreadAndDecorateWholeDoc, 1000)
@@ -222,25 +291,6 @@ export const LanguageTool = Extension.create<LanguageToolOptions, LanguageToolSt
           attributes: {
             spellcheck: 'false',
           },
-          handleDOMEvents: {
-            // TODO: check this out for the hover on current decoration
-            // contextmenu: (view, event) => {
-            //   const pos = view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos
-            //   if (pos === undefined) return
-            //   const { decorations, matches } = this.getState(view.state)
-            //   const deco = (decorations as DecorationSet).find(pos, pos)[0]
-            //   if (!deco) return false
-            //   const match = matches[deco.spec.id]
-            //   const selectionTransaction = view.state.tr.setSelection(
-            //     TextSelection.create(view.state.doc, deco.from, deco.to),
-            //   )
-            //   view.dispatch(selectionTransaction)
-            //   const dialog = new DialogLT(options.editor, view, match)
-            //   dialog.init()
-            //   event.preventDefault()
-            //   return true
-            // },
-          },
         },
         state: {
           init: (config, state) => {
@@ -250,7 +300,7 @@ export const LanguageTool = Extension.create<LanguageToolOptions, LanguageToolSt
 
             return decorationSet
           },
-          apply: (tr) => {
+          apply: (tr, oldPluginState, oldEditorState) => {
             const matchUpdated = tr.getMeta(LanguageToolHelpingWords.MatchUpdatedTransactionName)
 
             if (matchUpdated) this.storage.match = match
@@ -259,7 +309,10 @@ export const LanguageTool = Extension.create<LanguageToolOptions, LanguageToolSt
 
             if (languageToolDecorations) return decorationSet
 
-            if (tr.docChanged) debouncedProofreadAndDecorate(tr.doc, apiUrl)
+            if (tr.docChanged) {
+              if (!proofReadInitially) debouncedProofreadAndDecorate(tr.doc, apiUrl)
+              else changedDescendants(oldEditorState.doc, tr.doc, 0, debouncedProofreadNodeAndUpdateItsDecorations)
+            }
 
             decorationSet = decorationSet.map(tr.mapping, tr.doc)
 
