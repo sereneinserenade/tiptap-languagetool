@@ -129,7 +129,7 @@ const proofreadNodeAndUpdateItsDecorations = async (node: PMNode, offset: number
   editorView.dispatch(editorView.state.tr.setMeta(LanguageToolHelpingWords.LanguageToolTransactionName, true))
 }
 
-const debouncedProofreadNodeAndUpdateItsDecorations = debounce(proofreadNodeAndUpdateItsDecorations, 200)
+const debouncedProofreadNodeAndUpdateItsDecorations = debounce(proofreadNodeAndUpdateItsDecorations, 500)
 
 const moreThan500Words = (s: string) => s.trim().split(/\s+/).length >= 500
 
