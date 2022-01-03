@@ -65,6 +65,48 @@ const addEventListenersToDecorations = () => {
   }
 }
 
+const moreThan500Words = (s: string) => s.trim().split(/\s+/).length >= 500
+
+const getMatchAndSetDecorations = async (doc: PMNode, text: string, originalFrom: number) => {
+  const ltRes: LanguageToolResponse = await (
+    await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Accept: 'application/json',
+      },
+      body: `text=${encodeURIComponent(text)}&language=auto&enabledOnly=false`,
+    })
+  ).json()
+
+  debugger
+  const { matches } = ltRes
+
+  const decorations: Decoration[] = []
+
+  for (const match of matches) {
+    const from = 1 + match.offset + originalFrom
+    const to = from + match.length
+
+    const decoration = Decoration.inline(from, to, {
+      class: `lt lt-${match.rule.issueType}`,
+      nodeName: 'span',
+      match: JSON.stringify(match),
+      uuid: uuidv4(),
+    })
+
+    decorations.push(decoration)
+  }
+
+  decorationSet = decorationSet.remove(decorationSet.find(originalFrom, originalFrom + text.length))
+
+  decorationSet = decorationSet.add(doc, decorations)
+
+  editorView.dispatch(editorView.state.tr.setMeta(LanguageToolHelpingWords.LanguageToolTransactionName, true))
+
+  setTimeout(addEventListenersToDecorations)
+}
+
 const proofreadAndDecorateWholeDoc = async (doc: PMNode, url: string) => {
   apiUrl = url
 
@@ -95,49 +137,39 @@ const proofreadAndDecorateWholeDoc = async (doc: PMNode, url: string) => {
 
   let finalText = ''
 
+  const chunksOf500Words: { from: number; text: string }[] = []
+
   let lastPos = 1
+  let upperFrom = 0
   for (const { text, from, to } of textNodesWithPosition) {
+    upperFrom = from
     const diff = from - lastPos
     if (diff > 0) finalText += Array(diff + 1).join(' ')
     lastPos = to
 
     finalText += text
+
+    if (moreThan500Words(finalText)) {
+      // debugger
+      chunksOf500Words.push({
+        from,
+        text: finalText,
+      })
+
+      finalText = ''
+    }
   }
 
-  const ltRes: LanguageToolResponse = await (
-    await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        Accept: 'application/json',
-      },
-      body: `text=${encodeURIComponent(finalText)}&language=auto&enabledOnly=false`,
-    })
-  ).json()
+  chunksOf500Words.push({
+    from: chunksOf500Words.length ? upperFrom : 0,
+    text: finalText,
+  })
 
-  const { matches } = ltRes
+  debugger
 
-  const decorations: Decoration[] = []
-
-  for (const match of matches) {
-    const from = 1 + match.offset
-    const to = from + match.length
-
-    const decoration = Decoration.inline(from, to, {
-      class: `lt lt-${match.rule.issueType}`,
-      nodeName: 'span',
-      match: JSON.stringify(match),
-      uuid: uuidv4(),
-    })
-
-    decorations.push(decoration)
+  for (const { from, text } of chunksOf500Words) {
+    getMatchAndSetDecorations(doc, text, from)
   }
-
-  decorationSet = DecorationSet.create(doc, decorations)
-
-  editorView.dispatch(editorView.state.tr.setMeta(LanguageToolHelpingWords.LanguageToolTransactionName, true))
-
-  setTimeout(addEventListenersToDecorations)
 }
 
 const debouncedProofreadAndDecorate = debounce(proofreadAndDecorateWholeDoc, 1000)
@@ -157,7 +189,7 @@ export const LanguageTool = Extension.create<LanguageToolOptions, LanguageToolSt
   addOptions() {
     return {
       language: 'auto',
-      apiUrl: process.env.VUE_APP_LANGUAGE_TOOL_URL + 'check',
+      apiUrl: process?.env?.VUE_APP_LANGUAGE_TOOL_URL + 'check',
     }
   },
 
@@ -211,10 +243,7 @@ export const LanguageTool = Extension.create<LanguageToolOptions, LanguageToolSt
           apply: (tr) => {
             const matchUpdated = tr.getMeta(LanguageToolHelpingWords.MatchUpdatedTransactionName)
 
-            if (matchUpdated) {
-              this.storage.match = match
-              console.log('Match Updated', match)
-            }
+            if (matchUpdated) this.storage.match = match
 
             const languageToolDecorations = tr.getMeta(LanguageToolHelpingWords.LanguageToolTransactionName)
 
