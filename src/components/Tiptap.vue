@@ -7,7 +7,6 @@
     v-if="editor"
     :editor="editor"
     :tippy-options="{ placement: 'bottom', animation: 'fade' }"
-    :should-show="shouldShowLTSuggestion"
   >
     <section class="message-section">
       {{ matchMessage }}
@@ -29,10 +28,6 @@
 import { computed, ref } from 'vue'
 import { useEditor, EditorContent, BubbleMenu, Editor } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
-// import Document from '@tiptap/extension-document'
-// import Text from '@tiptap/extension-text'
-// import History from '@tiptap/extension-history'
-
 import { LanguageTool } from './extensions'
 import { content } from './text'
 import { Match } from '@/types'
