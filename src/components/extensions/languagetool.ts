@@ -1,41 +1,10 @@
-import { Extension, NodeWithPos, Predicate } from '@tiptap/core'
+import { Extension } from '@tiptap/core'
 import { Decoration, DecorationSet, EditorView } from 'prosemirror-view'
 import { Plugin, PluginKey } from 'prosemirror-state'
 import { Node as PMNode } from 'prosemirror-model'
 import { debounce } from 'lodash'
-import { LanguageToolResponse } from '../../types'
+import { LanguageToolResponse, Match } from '../../types'
 import { v4 as uuidv4 } from 'uuid'
-
-let editorView: EditorView
-
-let decorationSet: DecorationSet
-
-let apiUrl = ''
-
-const flatten = (node: PMNode) => {
-  if (!node) throw new Error('Invalid "node" parameter')
-
-  const result: { node: PMNode; pos: number }[] = []
-
-  node.descendants((child, pos) => {
-    result.push({ node: child, pos: pos })
-  })
-
-  return result
-}
-
-const findChildren = (node: PMNode, predicate: Predicate): NodeWithPos[] => {
-  if (!node) throw new Error('Invalid "node" parameter')
-  else if (!predicate) throw new Error('Invalid "predicate" parameter')
-
-  return flatten(node).filter((child) => predicate(child.node))
-}
-
-const findBlockNodes = (node: PMNode): NodeWithPos[] => findChildren(node, (child) => child.isBlock)
-
-enum LanguageToolWords {
-  TransactionMetaName = 'languageToolDecorations',
-}
 
 interface TextNodesWithPosition {
   text: string
@@ -43,10 +12,63 @@ interface TextNodesWithPosition {
   to: number
 }
 
+let editorView: EditorView
+
+let decorationSet: DecorationSet
+
+let apiUrl = ''
+
+let textNodesWithPosition: TextNodesWithPosition[] = []
+
+let match: Match | undefined = undefined
+
+enum LanguageToolHelpingWords {
+  LanguageToolTransactionName = 'languageToolTransaction',
+  MatchUpdatedTransactionName = 'matchUpdated',
+}
+
+const udpateMatch = (m?: Match) => {
+  if (m) match = m
+  else match = undefined
+
+  editorView.dispatch(editorView.state.tr.setMeta('matchUpdated', true))
+}
+
+const selectElementText = (el) => {
+  const range = document.createRange()
+  range.selectNode(el)
+
+  const sel = window.getSelection()
+  sel.removeAllRanges()
+  sel.addRange(range)
+}
+
+const mouseEnterEventListener = (e) => {
+  selectElementText(e.target)
+
+  const matchString = e.target.getAttribute('match')
+
+  if (matchString) udpateMatch(JSON.parse(matchString))
+  else udpateMatch()
+}
+
+const mouseLeaveEventListener = () => udpateMatch()
+
+const addEventListenersToDecorations = () => {
+  const decos = document.querySelectorAll('span.lt')
+
+  if (decos.length) {
+    decos.forEach((el) => {
+      el.addEventListener('click', mouseEnterEventListener)
+      el.addEventListener('mouseleave', mouseLeaveEventListener)
+    })
+  }
+}
+
 const proofreadAndDecorateWholeDoc = async (doc: PMNode, url: string) => {
   apiUrl = url
 
-  let textNodesWithPosition: TextNodesWithPosition[] = []
+  textNodesWithPosition = []
 
   let index = 0
   doc?.descendants((node, pos) => {
@@ -70,8 +92,6 @@ const proofreadAndDecorateWholeDoc = async (doc: PMNode, url: string) => {
   })
 
   textNodesWithPosition = textNodesWithPosition.filter(Boolean)
-
-  debugger
 
   let finalText = ''
 
@@ -115,7 +135,9 @@ const proofreadAndDecorateWholeDoc = async (doc: PMNode, url: string) => {
 
   decorationSet = DecorationSet.create(doc, decorations)
 
-  editorView.dispatch(editorView.state.tr.setMeta(LanguageToolWords.TransactionMetaName, true))
+  editorView.dispatch(editorView.state.tr.setMeta(LanguageToolHelpingWords.LanguageToolTransactionName, true))
+
+  setTimeout(addEventListenersToDecorations)
 }
 
 const debouncedProofreadAndDecorate = debounce(proofreadAndDecorateWholeDoc, 1000)
@@ -125,7 +147,11 @@ interface LanguageToolOptions {
   apiUrl: string
 }
 
-export const LanguageTool = Extension.create<LanguageToolOptions>({
+interface LanguageToolStorage {
+  match: Match
+}
+
+export const LanguageTool = Extension.create<LanguageToolOptions, LanguageToolStorage>({
   name: 'languagetool',
 
   addOptions() {
@@ -137,7 +163,7 @@ export const LanguageTool = Extension.create<LanguageToolOptions>({
 
   addStorage() {
     return {
-      // TODO: use this to give the access of LT results outside of tiptap
+      match: match,
     }
   },
 
@@ -182,14 +208,23 @@ export const LanguageTool = Extension.create<LanguageToolOptions>({
 
             return decorationSet
           },
-          apply: (tr, oldDecos, oldState) => {
-            const languageToolDecorations = tr.getMeta(LanguageToolWords.TransactionMetaName)
+          apply: (tr) => {
+            const matchUpdated = tr.getMeta(LanguageToolHelpingWords.MatchUpdatedTransactionName)
+
+            if (matchUpdated) {
+              this.storage.match = match
+              console.log('Match Updated', match)
+            }
+
+            const languageToolDecorations = tr.getMeta(LanguageToolHelpingWords.LanguageToolTransactionName)
 
             if (languageToolDecorations) return decorationSet
 
             if (tr.docChanged) debouncedProofreadAndDecorate(tr.doc, apiUrl)
 
             decorationSet = decorationSet.map(tr.mapping, tr.doc)
+
+            setTimeout(addEventListenersToDecorations)
 
             return decorationSet
           },

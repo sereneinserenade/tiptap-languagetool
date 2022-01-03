@@ -2,7 +2,13 @@
   <button @click="updateHtml">html</button>
   <editor-content v-if="editor" :editor="editor" />
 
-  <bubble-menu class="bubble-menu" v-if="editor" :editor="editor" :tippy-options="{ placement: 'bottom' }">
+  <bubble-menu
+    class="bubble-menu"
+    v-if="editor"
+    :editor="editor"
+    :tippy-options="{ placement: 'bottom', animation: 'fade' }"
+    :should-show="shouldShowLTSuggestion"
+  >
     <section class="message-section">
       {{ matchMessage }}
     </section>
@@ -21,7 +27,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { useEditor, EditorContent, BubbleMenu } from '@tiptap/vue-3'
+import { useEditor, EditorContent, BubbleMenu, Editor } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
 // import Document from '@tiptap/extension-document'
 // import Text from '@tiptap/extension-text'
@@ -31,70 +37,28 @@ import { LanguageTool } from './extensions'
 import { content } from './text'
 import { Match } from '@/types'
 
-let activeDecoSpanEl = ref<HTMLSpanElement>(null)
+const match = ref<Match>(null)
 
-const left = ref(false)
+const updateMatch = (editor: Editor) => {
+  match.value = editor.extensionStorage.languagetool.match
+}
 
-const showLTSuggestions = ref(false)
-
-const match = ref<Match | null>(null)
+const editor = useEditor({
+  content,
+  extensions: [StarterKit, LanguageTool.configure({})],
+  onUpdate({ editor }) {
+    setTimeout(() => updateMatch(editor as any))
+  },
+  onSelectionUpdate({ editor }) {
+    setTimeout(() => updateMatch(editor as any))
+  },
+})
 
 const replacements = computed(() => match.value?.replacements || [])
 
 const matchMessage = computed(() => match.value?.message || 'No Message')
 
-function selectElementText(el) {
-  const range = document.createRange()
-  range.selectNode(el)
-
-  const sel = window.getSelection()
-  sel.removeAllRanges()
-  sel.addRange(range)
-
-  console.log(match.value)
-}
-
-const mouseEnterEventListener = (e) => {
-  // await new Promise((r) => setTimeout(r, 500))
-  left.value = false
-
-  activeDecoSpanEl = e.target
-
-  !left.value && selectElementText(e.target)
-
-  const matchString = e.target.getAttribute('match')
-
-  if (matchString) match.value = JSON.parse(matchString)
-
-  showLTSuggestions.value = true
-}
-
-const mouseLeaveEventListener = (e) => {
-  left.value = true
-  activeDecoSpanEl = null
-  // match.value = null
-  showLTSuggestions.value = false
-}
-
-const addEventListenersToDecorations = () => {
-  const decos = document.querySelectorAll('span.lt')
-  decos?.forEach((el) => el.addEventListener('click', mouseEnterEventListener))
-  decos?.forEach((el) => el.addEventListener('mouseleave', mouseLeaveEventListener))
-}
-
-const editor = useEditor({
-  content,
-  extensions: [StarterKit, LanguageTool],
-  onUpdate: () => {
-    addEventListenersToDecorations()
-  },
-  onFocus: () => addEventListenersToDecorations(),
-  onTransaction: ({ transaction }) => {
-    const decosUpdated = transaction.getMeta('languageToolDecorations')
-
-    if (decosUpdated) addEventListenersToDecorations()
-  },
-})
+const shouldShowLTSuggestion = computed(() => match.value?.message)
 
 const updateHtml = () => navigator.clipboard.writeText(editor.value.getHTML())
 
