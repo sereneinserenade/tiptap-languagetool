@@ -85,7 +85,7 @@ const getMatchAndSetDecorations = async (doc: PMNode, text: string, originalFrom
   const decorations: Decoration[] = []
 
   for (const match of matches) {
-    const from = 1 + match.offset + originalFrom
+    const from = match.offset + originalFrom
     const to = from + match.length
 
     const decoration = Decoration.inline(from, to, {
@@ -139,24 +139,34 @@ const proofreadAndDecorateWholeDoc = async (doc: PMNode, url: string) => {
 
   const chunksOf500Words: { from: number; text: string }[] = []
 
-  let lastPos = 1
   let upperFrom = 0
+  let newDataSet = true
+
+  let lastPos = 1
+
   for (const { text, from, to } of textNodesWithPosition) {
-    upperFrom = from
-    const diff = from - lastPos
-    if (diff > 0) finalText += Array(diff + 1).join(' ')
+    if (!newDataSet) {
+      upperFrom = from
+
+      newDataSet = true
+    } else {
+      const diff = from - lastPos
+      if (diff > 0) finalText += Array(diff + 1).join(' ')
+    }
+
     lastPos = to
 
     finalText += text
 
     if (moreThan500Words(finalText)) {
-      // debugger
+      const updatedFrom = chunksOf500Words.length ? upperFrom : upperFrom + 1
       chunksOf500Words.push({
-        from,
+        from: updatedFrom,
         text: finalText,
       })
 
       finalText = ''
+      newDataSet = false
     }
   }
 
