@@ -1,5 +1,9 @@
 <template>
-  <button @click="updateHtml">html</button>
+  <section class="editor-menubar">
+    <button @click="updateHtml">html</button>
+    <button @click="toggleSpellCheck">html</button>
+  </section>
+
   <editor-content v-if="editor" :editor="editor" />
 
   <bubble-menu
@@ -8,18 +12,20 @@
     :editor="editor"
     :tippy-options="{ placement: 'bottom', animation: 'fade' }"
   >
-    <section class="message-section">
-      {{ matchMessage }}
-    </section>
-    <section class="suggestions-section">
-      <article
-        v-for="(replacement, i) in replacements"
-        @click="() => acceptSuggestion(replacement)"
-        :key="i + replacement.value"
-        class="suggestion"
-      >
-        {{ replacement.value }}
-      </article>
+    <section class="bubble-menu-section-container">
+      <section class="message-section">
+        {{ matchMessage }}
+      </section>
+      <section class="suggestions-section">
+        <article
+          v-for="(replacement, i) in replacements"
+          @click="() => acceptSuggestion(replacement)"
+          :key="i + replacement.value"
+          class="suggestion"
+        >
+          {{ replacement.value }}
+        </article>
+      </section>
     </section>
   </bubble-menu>
 </template>
@@ -53,13 +59,15 @@ const replacements = computed(() => match.value?.replacements || [])
 
 const matchMessage = computed(() => match.value?.message || 'No Message')
 
-const shouldShowLTSuggestion = computed(() => match.value?.message)
+const shouldShowLTSuggestion = computed(() => !!match.value?.message)
 
 const updateHtml = () => navigator.clipboard.writeText(editor.value.getHTML())
 
 const acceptSuggestion = (sug) => {
   editor.value.commands.insertContent(sug.value)
 }
+
+const toggleSpellCheck = () => editor.value.commands
 </script>
 
 <style lang="scss">
@@ -111,7 +119,7 @@ const acceptSuggestion = (sug) => {
   }
 }
 
-.bubble-menu {
+.bubble-menu > .bubble-menu-section-container {
   display: flex;
   flex-direction: column;
   background-color: white;
