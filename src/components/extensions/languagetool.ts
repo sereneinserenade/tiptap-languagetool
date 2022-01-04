@@ -3,8 +3,81 @@ import { Decoration, DecorationSet, EditorView } from 'prosemirror-view'
 import { Plugin, PluginKey } from 'prosemirror-state'
 import { Node as PMNode } from 'prosemirror-model'
 import { debounce } from 'lodash'
-import { LanguageToolResponse, Match } from '../../types'
 import { v4 as uuidv4 } from 'uuid'
+
+// *************** TYPES *****************
+export interface Software {
+  name: string
+  version: string
+  buildDate: string
+  apiVersion: number
+  premium: boolean
+  premiumHint: string
+  status: string
+}
+
+export interface Warnings {
+  incompleteResults: boolean
+}
+
+export interface DetectedLanguage {
+  name: string
+  code: string
+  confidence: number
+}
+
+export interface Language {
+  name: string
+  code: string
+  detectedLanguage: DetectedLanguage
+}
+
+export interface Replacement {
+  value: string
+}
+
+export interface Context {
+  text: string
+  offset: number
+  length: number
+}
+
+export interface Type {
+  typeName: string
+}
+
+export interface Category {
+  id: string
+  name: string
+}
+
+export interface Rule {
+  id: string
+  description: string
+  issueType: string
+  category: Category
+}
+
+export interface Match {
+  message: string
+  shortMessage: string
+  replacements: Replacement[]
+  offset: number
+  length: number
+  context: Context
+  sentence: string
+  type: Type
+  rule: Rule
+  ignoreForIncompleteSentence: boolean
+  contextForSureMatch: number
+}
+
+export interface LanguageToolResponse {
+  software: Software
+  warnings: Warnings
+  language: Language
+  matches: Match[]
+}
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
@@ -22,6 +95,17 @@ interface TextNodesWithPosition {
   from: number
   to: number
 }
+
+interface LanguageToolOptions {
+  language: string
+  apiUrl: string
+  automaticMode: boolean
+}
+
+interface LanguageToolStorage {
+  match?: Match
+}
+// *************** OVER: TYPES *****************
 
 let editorView: EditorView
 
@@ -47,19 +131,20 @@ const updateMatch = (m?: Match) => {
   editorView.dispatch(editorView.state.tr.setMeta('matchUpdated', true))
 }
 
-const selectElementText = (el) => {
+const selectElementText = (el: EventTarget) => {
   const range = document.createRange()
-  range.selectNode(el)
+  range.selectNode(el as HTMLSpanElement)
 
   const sel = window.getSelection()
-  sel.removeAllRanges()
-  sel.addRange(range)
+  sel?.removeAllRanges()
+  sel?.addRange(range)
 }
 
-const mouseEnterEventListener = (e) => {
+const mouseEnterEventListener = (e: Event) => {
+  if (!e.target) return
   selectElementText(e.target)
 
-  const matchString = e.target.getAttribute('match')
+  const matchString = (e.target as HTMLSpanElement).getAttribute('match')
 
   if (matchString) updateMatch(JSON.parse(matchString))
   else updateMatch()
@@ -199,7 +284,7 @@ const proofreadAndDecorateWholeDoc = async (doc: PMNode, url: string) => {
 
         textNodesWithPosition[index] = { text, from, to }
       } else {
-        const text = node.text
+        const text = node.text as string
         const from = pos
         const to = pos + text.length
 
@@ -261,16 +346,6 @@ const proofreadAndDecorateWholeDoc = async (doc: PMNode, url: string) => {
 }
 
 const debouncedProofreadAndDecorate = debounce(proofreadAndDecorateWholeDoc, 1000)
-
-interface LanguageToolOptions {
-  language: string
-  apiUrl: string
-  automaticMode: boolean
-}
-
-interface LanguageToolStorage {
-  match: Match
-}
 
 export const LanguageTool = Extension.create<LanguageToolOptions, LanguageToolStorage>({
   name: 'languagetool',

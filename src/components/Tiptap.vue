@@ -59,8 +59,6 @@ const replacements = computed(() => match.value?.replacements || [])
 
 const matchMessage = computed(() => match.value?.message || 'No Message')
 
-const shouldShowLTSuggestion = computed(() => !!match.value?.message)
-
 const updateHtml = () => navigator.clipboard.writeText(editor.value.getHTML())
 
 const acceptSuggestion = (sug) => {
