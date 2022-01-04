@@ -1,6 +1,8 @@
 # tiptap-languagetool
 
-Extension for integrating [Languagetool](https://languagetool.org/) with [TipTap](https://tiptap.dev). You can have your self-hosted instance of LanguageTool, details are [here](https://dev.languagetool.org/http-server). Thank you very much https://github.com/rezaffm for sponsoring this project.
+Extension for integrating [Languagetool](https://languagetool.org/) with [TipTap](https://tiptap.dev). You can have your self-hosted instance of LanguageTool, details are [here](https://dev.languagetool.org/http-server). 
+
+Special thanks to https://github.com/rezaffm for sponsoring this project.
 
 https://user-images.githubusercontent.com/45892659/148092446-86816377-82c7-40be-940f-fa37e4f5a972.mp4
 
