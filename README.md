@@ -1,7 +1,8 @@
 # tiptap-languagetool
 
-Extension for integrating [Languagetool](https://languagetool.org/) with [TipTap](https://tiptap.dev). You can have your self-hosted instance of LanguageTool, details are [here](https://dev.languagetool.org/http-server).
+Extension for integrating [Languagetool](https://languagetool.org/) with [TipTap](https://tiptap.dev). You can have your self-hosted instance of LanguageTool, details are [here](https://dev.languagetool.org/http-server). Thank you very much @rezaffm for sponsoring this project.
 
+https://user-images.githubusercontent.com/45892659/148092446-86816377-82c7-40be-940f-fa37e4f5a972.mp4
 
 ## How to use
 
@@ -70,10 +71,6 @@ Now showing the suggestion on click, so now in the vue component where you've im
 ```
 
 You can implement your own styles or copy the ones in [Tiptap.vue](src/components/Tiptap.vue).
-
-
-
-
 
 -------------------------------------------------------------
 -------------------------------------------------------------
