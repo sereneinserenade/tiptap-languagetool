@@ -1,10 +1,10 @@
 <template>
   <section class="editor-menubar">
-    <button @click="updateHtml">html</button>
-    <button @click="toggleSpellCheck">html</button>
+    <button @click="updateHtml">Copy editor html</button>
+    <button @click="proofread">Proofread</button>
   </section>
 
-  <editor-content v-if="editor" :editor="editor" />
+  <editor-content class="content" v-if="editor" :editor="editor" />
 
   <bubble-menu
     class="bubble-menu"
@@ -46,7 +46,7 @@ const updateMatch = (editor: Editor) => {
 
 const editor = useEditor({
   content,
-  extensions: [StarterKit, LanguageTool.configure({})],
+  extensions: [StarterKit, LanguageTool.configure({ automaticMode: true })],
   onUpdate({ editor }) {
     setTimeout(() => updateMatch(editor as any))
   },
@@ -67,10 +67,32 @@ const acceptSuggestion = (sug) => {
   editor.value.commands.insertContent(sug.value)
 }
 
-const toggleSpellCheck = () => editor.value.commands
+const proofread = () => editor.value.commands.proofread()
 </script>
 
 <style lang="scss">
+.editor-menubar {
+  display: flex;
+  gap: 1rem;
+
+  button {
+    padding: 0.5rem;
+    text-transform: capitalize;
+    border: none;
+    background-color: white;
+    box-shadow: 0 0 10px rgba($color: #000000, $alpha: 0.25);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease-in-out;
+    font-weight: 500;
+    font-size: 1.1em;
+
+    &:hover {
+      box-shadow: 0 0 2px rgba($color: #000000, $alpha: 0.25);
+    }
+  }
+}
+
 .ProseMirror {
   .lt {
     border-bottom: 2px solid #e86a69;
@@ -117,6 +139,11 @@ const toggleSpellCheck = () => editor.value.commands
   div {
     width: 50%;
   }
+}
+
+.content {
+  max-width: 50%;
+  min-width: 50%;
 }
 
 .bubble-menu > .bubble-menu-section-container {

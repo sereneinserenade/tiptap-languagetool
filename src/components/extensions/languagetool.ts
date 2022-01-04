@@ -6,6 +6,17 @@ import { debounce } from 'lodash'
 import { LanguageToolResponse, Match } from '../../types'
 import { v4 as uuidv4 } from 'uuid'
 
+declare module '@tiptap/core' {
+  interface Commands<ReturnType> {
+    languagetool: {
+      /**
+       * Proofreads whole document
+       */
+      proofread: () => ReturnType
+    }
+  }
+}
+
 interface TextNodesWithPosition {
   text: string
   from: number
@@ -119,6 +130,7 @@ const proofreadNodeAndUpdateItsDecorations = async (node: PMNode, offset: number
       class: `lt lt-${match.rule.issueType}`,
       nodeName: 'span',
       match: JSON.stringify(match),
+      uuid: uuidv4(),
     })
 
     nodeSpecificDecorations.push(decoration)
@@ -145,7 +157,6 @@ const getMatchAndSetDecorations = async (doc: PMNode, text: string, originalFrom
     })
   ).json()
 
-  // debugger
   const { matches } = ltRes
 
   const decorations: Decoration[] = []
@@ -238,11 +249,9 @@ const proofreadAndDecorateWholeDoc = async (doc: PMNode, url: string) => {
   }
 
   chunksOf500Words.push({
-    from: chunksOf500Words.length ? upperFrom : 0,
+    from: chunksOf500Words.length ? upperFrom : 1,
     text: finalText,
   })
-
-  // debugger
 
   for (const { from, text } of chunksOf500Words) {
     getMatchAndSetDecorations(doc, text, from)
@@ -256,6 +265,7 @@ const debouncedProofreadAndDecorate = debounce(proofreadAndDecorateWholeDoc, 100
 interface LanguageToolOptions {
   language: string
   apiUrl: string
+  automaticMode: boolean
 }
 
 interface LanguageToolStorage {
@@ -269,12 +279,24 @@ export const LanguageTool = Extension.create<LanguageToolOptions, LanguageToolSt
     return {
       language: 'auto',
       apiUrl: process?.env?.VUE_APP_LANGUAGE_TOOL_URL + 'check',
+      automaticMode: true,
     }
   },
 
   addStorage() {
     return {
       match: match,
+    }
+  },
+
+  addCommands() {
+    return {
+      proofread:
+        () =>
+        ({ tr }) => {
+          proofreadAndDecorateWholeDoc(tr.doc, this.options.apiUrl)
+          return true
+        },
     }
   },
 
@@ -296,7 +318,7 @@ export const LanguageTool = Extension.create<LanguageToolOptions, LanguageToolSt
           init: (config, state) => {
             decorationSet = DecorationSet.create(state.doc, [])
 
-            proofreadAndDecorateWholeDoc(state.doc, apiUrl)
+            if (this.options.automaticMode) proofreadAndDecorateWholeDoc(state.doc, apiUrl)
 
             return decorationSet
           },
@@ -309,7 +331,7 @@ export const LanguageTool = Extension.create<LanguageToolOptions, LanguageToolSt
 
             if (languageToolDecorations) return decorationSet
 
-            if (tr.docChanged) {
+            if (tr.docChanged && this.options.automaticMode) {
               if (!proofReadInitially) debouncedProofreadAndDecorate(tr.doc, apiUrl)
               else changedDescendants(oldEditorState.doc, tr.doc, 0, debouncedProofreadNodeAndUpdateItsDecorations)
             }

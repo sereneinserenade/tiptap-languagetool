@@ -14,5 +14,9 @@ import { Tiptap } from './components'
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   color: #2c3e50;
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: center;
 }
 </style>
