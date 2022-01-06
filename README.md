@@ -33,7 +33,7 @@ const editor = useEditor({
   content,
   extensions: [StarterKit, LanguageTool.configure({ 
     language: 'auto', // it can detect language automatically or you can write your own language like 'en-US'
-    apiUrl: "https://api.languagetool.org/v2/" + 'check', // You can replace this with your own language tool API key - see https://dev.languagetool.org/http-server for self-hosted or cloud-hosted solution
+    apiUrl: "https://api.languagetool.org/v2/" + 'check', // See note below
     automaticMode: true, // if true, it will start proofreading immediately otherwise only when you execute `proofread` command of the extension.
   })],
   onUpdate({ editor }) {
@@ -44,6 +44,25 @@ const editor = useEditor({
   },
 })
 ```
+
+# Language Tool URL Public HTTP Proofreading API 
+
+Language tool offer a public API endpoint: `https://api.languagetool.org/v2/check`. When using this link you should be responsible as outlined here.
+
+When using it, please keep the following [rules](https://dev.languagetool.org/public-http-api) in mind:
+---
+- Do not send automated requests. For that, set up your own instance of LanguageTool or get an account for Enterprise use.
+- Only send POST requests, not GET requests.
+- Access is currently limited to:
+- 20 requests per IP per minute (this is supposed to be a peak value - don’t constantly send this many requests or we would have to block you)
+- 75KB text per IP per minute
+- 20KB text per request
+- Only up to 30 misspelled words will have suggestions.
+- This is a free service, thus there are no guarantees about performance or availability. The limits may change anytime.
+- The LanguageTool version installed may be the latest official release or some snapshot. We will simply deploy new versions, thus the behavior will change without any warning.
+- Read our privacy policy to see how we handle your texts. You are responsible for giving your users information about how their data is handled.
+- We expect you to add a link back to https://languagetool.org that’s clearly visible.
+---
 
 Now showing the suggestion on click, so now in the vue component where you've implemented tiptap.
 
