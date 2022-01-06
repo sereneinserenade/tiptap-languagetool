@@ -33,7 +33,7 @@ const editor = useEditor({
   content,
   extensions: [StarterKit, LanguageTool.configure({ 
     language: 'auto', // it can detect language automatically or you can write your own language like 'en-US'
-    apiUrl: YOUR_LANGUAGETOOL_SERVER_URL_HERE + 'check',
+    apiUrl: "https://api.languagetool.org/v2/" + 'check', // You can replace this with your own language tool API key - see https://dev.languagetool.org/http-server for self-hosted or cloud-hosted solution
     automaticMode: true, // if true, it will start proofreading immediately otherwise only when you execute `proofread` command of the extension.
   })],
   onUpdate({ editor }) {
