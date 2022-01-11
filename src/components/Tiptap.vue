@@ -2,6 +2,8 @@
   <section class="editor-menubar">
     <button @click="updateHtml">Copy editor html</button>
     <button @click="proofread">Proofread</button>
+
+    <span>{{ loading ? 'Loading' : 'Done' }}</span>
   </section>
 
   <editor-content class="content" v-if="editor" :editor="editor" />
@@ -34,11 +36,13 @@
 import { computed, ref } from 'vue'
 import { useEditor, EditorContent, BubbleMenu, Editor } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
-import { LanguageTool } from './extensions'
+import { LanguageTool, LanguageToolHelpingWords } from './extensions'
 import { content } from './text'
 import { Match } from '@/types'
 
 const match = ref<Match>(null)
+
+const loading = ref(false)
 
 const updateMatch = (editor: Editor) => {
   match.value = editor.extensionStorage.languagetool.match
@@ -52,6 +56,12 @@ const editor = useEditor({
   },
   onSelectionUpdate({ editor }) {
     setTimeout(() => updateMatch(editor as any))
+  },
+  onTransaction({ editor, transaction: tr }) {
+    if (tr.getMeta(LanguageToolHelpingWords.LoadingTransactionName)) loading.value = true
+    else loading.value = false
+
+    console.log('and there we are', loading.value)
   },
 })
 

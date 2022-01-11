@@ -1,6 +1,6 @@
 import { Extension } from '@tiptap/core'
 import { Decoration, DecorationSet, EditorView } from 'prosemirror-view'
-import { Plugin, PluginKey } from 'prosemirror-state'
+import { Plugin, PluginKey, Transaction } from 'prosemirror-state'
 import { Node as PMNode } from 'prosemirror-model'
 import { debounce } from 'lodash'
 import { v4 as uuidv4 } from 'uuid'
@@ -104,6 +104,7 @@ interface LanguageToolOptions {
 
 interface LanguageToolStorage {
   match?: Match
+  loading?: boolean
 }
 // *************** OVER: TYPES *****************
 
@@ -119,10 +120,13 @@ let match: Match | undefined = undefined
 
 let proofReadInitially = false
 
-enum LanguageToolHelpingWords {
+export enum LanguageToolHelpingWords {
   LanguageToolTransactionName = 'languageToolTransaction',
   MatchUpdatedTransactionName = 'matchUpdated',
+  LoadingTransactionName = 'languageToolLoading',
 }
+
+const dispatch = (tr: Transaction) => editorView.dispatch(tr)
 
 const updateMatch = (m?: Match) => {
   if (m) match = m
@@ -192,6 +196,8 @@ export function changedDescendants(
 }
 
 const proofreadNodeAndUpdateItsDecorations = async (node: PMNode, offset: number, cur: PMNode) => {
+  if (editorView?.state) dispatch(editorView.state.tr.setMeta(LanguageToolHelpingWords.LoadingTransactionName, true))
+
   const ltRes: LanguageToolResponse = await (
     await fetch(apiUrl, {
       method: 'POST',
@@ -223,7 +229,7 @@ const proofreadNodeAndUpdateItsDecorations = async (node: PMNode, offset: number
 
   decorationSet = decorationSet.add(cur, nodeSpecificDecorations)
 
-  editorView.dispatch(editorView.state.tr.setMeta(LanguageToolHelpingWords.LanguageToolTransactionName, true))
+  if (editorView) dispatch(editorView.state.tr.setMeta(LanguageToolHelpingWords.LanguageToolTransactionName, true))
 }
 
 const debouncedProofreadNodeAndUpdateItsDecorations = debounce(proofreadNodeAndUpdateItsDecorations, 500)
@@ -231,6 +237,8 @@ const debouncedProofreadNodeAndUpdateItsDecorations = debounce(proofreadNodeAndU
 const moreThan500Words = (s: string) => s.trim().split(/\s+/).length >= 500
 
 const getMatchAndSetDecorations = async (doc: PMNode, text: string, originalFrom: number) => {
+  if (editorView) dispatch(editorView.state.tr.setMeta(LanguageToolHelpingWords.LoadingTransactionName, true))
+
   const ltRes: LanguageToolResponse = await (
     await fetch(apiUrl, {
       method: 'POST',
@@ -264,7 +272,7 @@ const getMatchAndSetDecorations = async (doc: PMNode, text: string, originalFrom
 
   decorationSet = decorationSet.add(doc, decorations)
 
-  editorView.dispatch(editorView.state.tr.setMeta(LanguageToolHelpingWords.LanguageToolTransactionName, true))
+  if (editorView) dispatch(editorView.state.tr.setMeta(LanguageToolHelpingWords.LanguageToolTransactionName, true))
 
   setTimeout(addEventListenersToDecorations)
 }
@@ -361,6 +369,7 @@ export const LanguageTool = Extension.create<LanguageToolOptions, LanguageToolSt
   addStorage() {
     return {
       match: match,
+      loading: false,
     }
   },
 
@@ -399,6 +408,10 @@ export const LanguageTool = Extension.create<LanguageToolOptions, LanguageToolSt
           },
           apply: (tr, oldPluginState, oldEditorState) => {
             const matchUpdated = tr.getMeta(LanguageToolHelpingWords.MatchUpdatedTransactionName)
+            const loading = tr.getMeta(LanguageToolHelpingWords.LoadingTransactionName)
+
+            if (loading) this.storage.loading = true
+            else this.storage.loading = false
 
             if (matchUpdated) this.storage.match = match
 
