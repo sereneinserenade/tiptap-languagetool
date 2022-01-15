@@ -17,6 +17,8 @@
     <section class="bubble-menu-section-container">
       <section class="message-section">
         {{ matchMessage }}
+
+        <button class="ignore-suggestion-button" @click="ignoreSuggestion">XXX</button>
       </section>
       <section class="suggestions-section">
         <article
@@ -50,18 +52,18 @@ const updateMatch = (editor: Editor) => {
 
 const editor = useEditor({
   content,
-  extensions: [StarterKit, LanguageTool.configure({ automaticMode: true })],
+  extensions: [StarterKit, LanguageTool.configure({ automaticMode: true, documentId: '1' })],
   onUpdate({ editor }) {
     setTimeout(() => updateMatch(editor as any))
   },
   onSelectionUpdate({ editor }) {
     setTimeout(() => updateMatch(editor as any))
   },
-  onTransaction({ editor, transaction: tr }) {
+  onTransaction({ transaction: tr }) {
     if (tr.getMeta(LanguageToolHelpingWords.LoadingTransactionName)) loading.value = true
     else loading.value = false
 
-    console.log('and there we are', loading.value)
+    console.log(loading.value)
   },
 })
 
@@ -76,6 +78,8 @@ const acceptSuggestion = (sug) => {
 }
 
 const proofread = () => editor.value.commands.proofread()
+
+const ignoreSuggestion = () => editor.value.commands.ignoreLanguageToolSuggestion(match.value)
 </script>
 
 <style lang="scss">

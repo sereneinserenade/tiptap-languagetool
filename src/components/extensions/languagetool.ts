@@ -4,6 +4,7 @@ import { Plugin, PluginKey, Transaction } from 'prosemirror-state'
 import { Node as PMNode } from 'prosemirror-model'
 import { debounce } from 'lodash'
 import { v4 as uuidv4 } from 'uuid'
+import { Dexie } from 'dexie'
 
 // *************** TYPES *****************
 export interface Software {
@@ -86,6 +87,10 @@ declare module '@tiptap/core' {
        * Proofreads whole document
        */
       proofread: () => ReturnType
+
+      toggleProofreading: () => ReturnType
+
+      ignoreLanguageToolSuggestion: (match: Match) => ReturnType
     }
   }
 }
@@ -100,6 +105,7 @@ interface LanguageToolOptions {
   language: string
   apiUrl: string
   automaticMode: boolean
+  documentId: string | number
 }
 
 interface LanguageToolStorage {
@@ -111,6 +117,10 @@ interface LanguageToolStorage {
 let editorView: EditorView
 
 let decorationSet: DecorationSet
+
+let db: Dexie
+
+let extensionDocId: string | number
 
 let apiUrl = ''
 
@@ -195,6 +205,14 @@ export function changedDescendants(
   }
 }
 
+const gimmeDecoration = (from: number, to: number, match: Match) =>
+  Decoration.inline(from, to, {
+    class: `lt lt-${match.rule.issueType}`,
+    nodeName: 'span',
+    match: JSON.stringify(match),
+    uuid: uuidv4(),
+  })
+
 const proofreadNodeAndUpdateItsDecorations = async (node: PMNode, offset: number, cur: PMNode) => {
   if (editorView?.state) dispatch(editorView.state.tr.setMeta(LanguageToolHelpingWords.LoadingTransactionName, true))
 
@@ -217,14 +235,14 @@ const proofreadNodeAndUpdateItsDecorations = async (node: PMNode, offset: number
     const from = match.offset + offset
     const to = from + match.length
 
-    const decoration = Decoration.inline(from, to, {
-      class: `lt lt-${match.rule.issueType}`,
-      nodeName: 'span',
-      match: JSON.stringify(match),
-      uuid: uuidv4(),
-    })
+    if (extensionDocId) {
+      const content = editorView.state.doc.textBetween(from, to)
+      const result = await (db as any).ignoredWords.get({ value: content, documentId: extensionDocId })
 
-    nodeSpecificDecorations.push(decoration)
+      if (!result) nodeSpecificDecorations.push(gimmeDecoration(from, to, match))
+    } else {
+      nodeSpecificDecorations.push(gimmeDecoration(from, to, match))
+    }
   }
 
   decorationSet = decorationSet.add(cur, nodeSpecificDecorations)
@@ -237,8 +255,6 @@ const debouncedProofreadNodeAndUpdateItsDecorations = debounce(proofreadNodeAndU
 const moreThan500Words = (s: string) => s.trim().split(/\s+/).length >= 500
 
 const getMatchAndSetDecorations = async (doc: PMNode, text: string, originalFrom: number) => {
-  if (editorView) dispatch(editorView.state.tr.setMeta(LanguageToolHelpingWords.LoadingTransactionName, true))
-
   const ltRes: LanguageToolResponse = await (
     await fetch(apiUrl, {
       method: 'POST',
@@ -258,14 +274,14 @@ const getMatchAndSetDecorations = async (doc: PMNode, text: string, originalFrom
     const from = match.offset + originalFrom
     const to = from + match.length
 
-    const decoration = Decoration.inline(from, to, {
-      class: `lt lt-${match.rule.issueType}`,
-      nodeName: 'span',
-      match: JSON.stringify(match),
-      uuid: uuidv4(),
-    })
+    if (extensionDocId) {
+      const content = doc.textBetween(from, to)
+      const result = await (db as any).ignoredWords.get({ value: content })
 
-    decorations.push(decoration)
+      if (!result) decorations.push(gimmeDecoration(from, to, match))
+    } else {
+      decorations.push(gimmeDecoration(from, to, match))
+    }
   }
 
   decorationSet = decorationSet.remove(decorationSet.find(originalFrom, originalFrom + text.length))
@@ -346,9 +362,12 @@ const proofreadAndDecorateWholeDoc = async (doc: PMNode, url: string) => {
     text: finalText,
   })
 
-  for (const { from, text } of chunksOf500Words) {
-    getMatchAndSetDecorations(doc, text, from)
-  }
+  const requests = chunksOf500Words.map(({ text, from }) => getMatchAndSetDecorations(doc, text, from))
+
+  if (editorView) dispatch(editorView.state.tr.setMeta(LanguageToolHelpingWords.LoadingTransactionName, true))
+  Promise.all(requests).then(() => {
+    if (editorView) dispatch(editorView.state.tr.setMeta(LanguageToolHelpingWords.LoadingTransactionName, false))
+  })
 
   proofReadInitially = true
 }
@@ -363,6 +382,7 @@ export const LanguageTool = Extension.create<LanguageToolOptions, LanguageToolSt
       language: 'auto',
       apiUrl: process?.env?.VUE_APP_LANGUAGE_TOOL_URL + 'check',
       automaticMode: true,
+      documentId: undefined,
     }
   },
 
@@ -381,11 +401,31 @@ export const LanguageTool = Extension.create<LanguageToolOptions, LanguageToolSt
           proofreadAndDecorateWholeDoc(tr.doc, this.options.apiUrl)
           return true
         },
+      toggleProofreading: () => () => {
+        // TODO: implement toggling proofreading
+        return false
+      },
+      ignoreLanguageToolSuggestion:
+        (match) =>
+        ({ editor }) => {
+          if (this.options.documentId === undefined)
+            throw new Error('Please provide a unique Document ID(number|string)')
+
+          const { selection, doc } = editor.state
+          const { from, to } = selection
+          decorationSet = decorationSet.remove(decorationSet.find(from, to))
+
+          const content = doc.textBetween(from, to)
+
+          ;(db as any).ignoredWords.add({ value: content, documentId: `${extensionDocId}` })
+
+          return false
+        },
     }
   },
 
   addProseMirrorPlugins() {
-    const { apiUrl } = this.options
+    const { apiUrl, documentId } = this.options
 
     return [
       new Plugin({
@@ -403,6 +443,20 @@ export const LanguageTool = Extension.create<LanguageToolOptions, LanguageToolSt
             decorationSet = DecorationSet.create(state.doc, [])
 
             if (this.options.automaticMode) proofreadAndDecorateWholeDoc(state.doc, apiUrl)
+
+            if (documentId) {
+              extensionDocId = documentId
+
+              db = new Dexie('LanguageToolIgnoredSuggestions')
+
+              db.version(1).stores({
+                ignoredWords: `
+                  ++id,
+                  &value,
+                  documentId
+                `,
+              })
+            }
 
             return decorationSet
           },
