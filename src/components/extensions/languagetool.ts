@@ -90,7 +90,7 @@ declare module '@tiptap/core' {
 
       toggleProofreading: () => ReturnType
 
-      ignoreLanguageToolSuggestion: (match: Match) => ReturnType
+      ignoreLanguageToolSuggestion: () => ReturnType
     }
   }
 }
@@ -105,7 +105,7 @@ interface LanguageToolOptions {
   language: string
   apiUrl: string
   automaticMode: boolean
-  documentId: string | number
+  documentId: string | number | undefined
 }
 
 interface LanguageToolStorage {
@@ -406,7 +406,7 @@ export const LanguageTool = Extension.create<LanguageToolOptions, LanguageToolSt
         return false
       },
       ignoreLanguageToolSuggestion:
-        (match) =>
+        () =>
         ({ editor }) => {
           if (this.options.documentId === undefined)
             throw new Error('Please provide a unique Document ID(number|string)')

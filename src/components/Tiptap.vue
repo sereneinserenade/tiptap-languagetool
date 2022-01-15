@@ -79,7 +79,7 @@ const acceptSuggestion = (sug) => {
 
 const proofread = () => editor.value.commands.proofread()
 
-const ignoreSuggestion = () => editor.value.commands.ignoreLanguageToolSuggestion(match.value)
+const ignoreSuggestion = () => editor.value.commands.ignoreLanguageToolSuggestion()
 </script>
 
 <style lang="scss">

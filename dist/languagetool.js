@@ -3,17 +3,23 @@ import { Decoration, DecorationSet } from 'prosemirror-view'
 import { Plugin, PluginKey } from 'prosemirror-state'
 import { debounce } from 'lodash'
 import { v4 as uuidv4 } from 'uuid'
+import { Dexie } from 'dexie'
+// *************** OVER: TYPES *****************
 let editorView
 let decorationSet
+let db
+let extensionDocId
 let apiUrl = ''
 let textNodesWithPosition = []
 let match = undefined
 let proofReadInitially = false
-var LanguageToolHelpingWords
+export var LanguageToolHelpingWords
 ;(function (LanguageToolHelpingWords) {
   LanguageToolHelpingWords['LanguageToolTransactionName'] = 'languageToolTransaction'
   LanguageToolHelpingWords['MatchUpdatedTransactionName'] = 'matchUpdated'
+  LanguageToolHelpingWords['LoadingTransactionName'] = 'languageToolLoading'
 })(LanguageToolHelpingWords || (LanguageToolHelpingWords = {}))
+const dispatch = (tr) => editorView.dispatch(tr)
 const updateMatch = (m) => {
   if (m) match = m
   else match = undefined
@@ -61,7 +67,16 @@ export function changedDescendants(old, cur, offset, f) {
     offset += child.nodeSize
   }
 }
+const gimmeDecoration = (from, to, match) =>
+  Decoration.inline(from, to, {
+    class: `lt lt-${match.rule.issueType}`,
+    nodeName: 'span',
+    match: JSON.stringify(match),
+    uuid: uuidv4(),
+  })
 const proofreadNodeAndUpdateItsDecorations = async (node, offset, cur) => {
+  if (editorView === null || editorView === void 0 ? void 0 : editorView.state)
+    dispatch(editorView.state.tr.setMeta(LanguageToolHelpingWords.LoadingTransactionName, true))
   const ltRes = await (
     await fetch(apiUrl, {
       method: 'POST',
@@ -77,16 +92,16 @@ const proofreadNodeAndUpdateItsDecorations = async (node, offset, cur) => {
   for (const match of ltRes.matches) {
     const from = match.offset + offset
     const to = from + match.length
-    const decoration = Decoration.inline(from, to, {
-      class: `lt lt-${match.rule.issueType}`,
-      nodeName: 'span',
-      match: JSON.stringify(match),
-      uuid: uuidv4(),
-    })
-    nodeSpecificDecorations.push(decoration)
+    if (extensionDocId) {
+      const content = editorView.state.doc.textBetween(from, to)
+      const result = await db.ignoredWords.get({ value: content, documentId: extensionDocId })
+      if (!result) nodeSpecificDecorations.push(gimmeDecoration(from, to, match))
+    } else {
+      nodeSpecificDecorations.push(gimmeDecoration(from, to, match))
+    }
   }
   decorationSet = decorationSet.add(cur, nodeSpecificDecorations)
-  editorView.dispatch(editorView.state.tr.setMeta(LanguageToolHelpingWords.LanguageToolTransactionName, true))
+  if (editorView) dispatch(editorView.state.tr.setMeta(LanguageToolHelpingWords.LanguageToolTransactionName, true))
 }
 const debouncedProofreadNodeAndUpdateItsDecorations = debounce(proofreadNodeAndUpdateItsDecorations, 500)
 const moreThan500Words = (s) => s.trim().split(/\s+/).length >= 500
@@ -106,17 +121,17 @@ const getMatchAndSetDecorations = async (doc, text, originalFrom) => {
   for (const match of matches) {
     const from = match.offset + originalFrom
     const to = from + match.length
-    const decoration = Decoration.inline(from, to, {
-      class: `lt lt-${match.rule.issueType}`,
-      nodeName: 'span',
-      match: JSON.stringify(match),
-      uuid: uuidv4(),
-    })
-    decorations.push(decoration)
+    if (extensionDocId) {
+      const content = doc.textBetween(from, to)
+      const result = await db.ignoredWords.get({ value: content })
+      if (!result) decorations.push(gimmeDecoration(from, to, match))
+    } else {
+      decorations.push(gimmeDecoration(from, to, match))
+    }
   }
   decorationSet = decorationSet.remove(decorationSet.find(originalFrom, originalFrom + text.length))
   decorationSet = decorationSet.add(doc, decorations)
-  editorView.dispatch(editorView.state.tr.setMeta(LanguageToolHelpingWords.LanguageToolTransactionName, true))
+  if (editorView) dispatch(editorView.state.tr.setMeta(LanguageToolHelpingWords.LanguageToolTransactionName, true))
   setTimeout(addEventListenersToDecorations)
 }
 const proofreadAndDecorateWholeDoc = async (doc, url) => {
@@ -172,9 +187,11 @@ const proofreadAndDecorateWholeDoc = async (doc, url) => {
     from: chunksOf500Words.length ? upperFrom : 1,
     text: finalText,
   })
-  for (const { from, text } of chunksOf500Words) {
-    getMatchAndSetDecorations(doc, text, from)
-  }
+  const requests = chunksOf500Words.map(({ text, from }) => getMatchAndSetDecorations(doc, text, from))
+  if (editorView) dispatch(editorView.state.tr.setMeta(LanguageToolHelpingWords.LoadingTransactionName, true))
+  Promise.all(requests).then(() => {
+    if (editorView) dispatch(editorView.state.tr.setMeta(LanguageToolHelpingWords.LoadingTransactionName, false))
+  })
   proofReadInitially = true
 }
 const debouncedProofreadAndDecorate = debounce(proofreadAndDecorateWholeDoc, 1000)
@@ -189,11 +206,13 @@ export const LanguageTool = Extension.create({
           ? void 0
           : _a.VUE_APP_LANGUAGE_TOOL_URL) + 'check',
       automaticMode: true,
+      documentId: undefined,
     }
   },
   addStorage() {
     return {
       match: match,
+      loading: false,
     }
   },
   addCommands() {
@@ -204,10 +223,26 @@ export const LanguageTool = Extension.create({
           proofreadAndDecorateWholeDoc(tr.doc, this.options.apiUrl)
           return true
         },
+      toggleProofreading: () => () => {
+        // TODO: implement toggling proofreading
+        return false
+      },
+      ignoreLanguageToolSuggestion:
+        () =>
+        ({ editor }) => {
+          if (this.options.documentId === undefined)
+            throw new Error('Please provide a unique Document ID(number|string)')
+          const { selection, doc } = editor.state
+          const { from, to } = selection
+          decorationSet = decorationSet.remove(decorationSet.find(from, to))
+          const content = doc.textBetween(from, to)
+          db.ignoredWords.add({ value: content, documentId: `${extensionDocId}` })
+          return false
+        },
     }
   },
   addProseMirrorPlugins() {
-    const { apiUrl } = this.options
+    const { apiUrl, documentId } = this.options
     return [
       new Plugin({
         key: new PluginKey('languagetool'),
@@ -223,10 +258,24 @@ export const LanguageTool = Extension.create({
           init: (config, state) => {
             decorationSet = DecorationSet.create(state.doc, [])
             if (this.options.automaticMode) proofreadAndDecorateWholeDoc(state.doc, apiUrl)
+            if (documentId) {
+              extensionDocId = documentId
+              db = new Dexie('LanguageToolIgnoredSuggestions')
+              db.version(1).stores({
+                ignoredWords: `
+                  ++id,
+                  &value,
+                  documentId
+                `,
+              })
+            }
             return decorationSet
           },
           apply: (tr, oldPluginState, oldEditorState) => {
             const matchUpdated = tr.getMeta(LanguageToolHelpingWords.MatchUpdatedTransactionName)
+            const loading = tr.getMeta(LanguageToolHelpingWords.LoadingTransactionName)
+            if (loading) this.storage.loading = true
+            else this.storage.loading = false
             if (matchUpdated) this.storage.match = match
             const languageToolDecorations = tr.getMeta(LanguageToolHelpingWords.LanguageToolTransactionName)
             if (languageToolDecorations) return decorationSet
