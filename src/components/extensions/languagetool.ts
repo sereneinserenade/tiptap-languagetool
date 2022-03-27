@@ -5,6 +5,7 @@ import { Node as PMNode } from 'prosemirror-model'
 import { debounce } from 'lodash'
 import { v4 as uuidv4 } from 'uuid'
 import { Dexie } from 'dexie'
+import mockedResponse from './mock'
 
 // *************** TYPES *****************
 export interface Software {
@@ -214,40 +215,46 @@ const gimmeDecoration = (from: number, to: number, match: Match) =>
   })
 
 const proofreadNodeAndUpdateItsDecorations = async (node: PMNode, offset: number, cur: PMNode) => {
+  // Mocking the Loading state when text from a node is changed
   if (editorView?.state) dispatch(editorView.state.tr.setMeta(LanguageToolHelpingWords.LoadingTransactionName, true))
 
-  const ltRes: LanguageToolResponse = await (
-    await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        Accept: 'application/json',
-      },
-      body: `text=${encodeURIComponent(node.textContent)}&language=auto&enabledOnly=false`,
-    })
-  ).json()
+  await new Promise((r) => setTimeout(r, 500))
 
-  decorationSet = decorationSet.remove(decorationSet.find(offset, offset + node.nodeSize))
+  if (editorView?.state) dispatch(editorView.state.tr.setMeta(LanguageToolHelpingWords.LoadingTransactionName, false))
 
-  const nodeSpecificDecorations: Decoration[] = []
+  // const ltRes: LanguageToolResponse = await (
+  //   await fetch(apiUrl, {
+  //     method: 'POST',
+  //     headers: {
+  //       'Content-Type': 'application/x-www-form-urlencoded',
+  //       Accept: 'application/json',
+  //     },
+  //     body: `text=${encodeURIComponent(node.textContent)}&language=auto&enabledOnly=false`,
+  //   })
+  // ).json()
 
-  for (const match of ltRes.matches) {
-    const from = match.offset + offset
-    const to = from + match.length
+  // decorationSet = decorationSet.remove(decorationSet.find(offset, offset + node.nodeSize))
 
-    if (extensionDocId) {
-      const content = editorView.state.doc.textBetween(from, to)
-      const result = await (db as any).ignoredWords.get({ value: content, documentId: extensionDocId })
+  // const nodeSpecificDecorations: Decoration[] = []
 
-      if (!result) nodeSpecificDecorations.push(gimmeDecoration(from, to, match))
-    } else {
-      nodeSpecificDecorations.push(gimmeDecoration(from, to, match))
-    }
-  }
+  // for (const match of ltRes.matches) {
+  //   const from = match.offset + offset
+  //   const to = from + match.length
 
-  decorationSet = decorationSet.add(cur, nodeSpecificDecorations)
+  //   if (extensionDocId) {
+  //     const content = editorView.state.doc.textBetween(from, to)
+  //     const result = await (db as any).ignoredWords.get({ value: content, documentId: extensionDocId })
 
-  if (editorView) dispatch(editorView.state.tr.setMeta(LanguageToolHelpingWords.LanguageToolTransactionName, true))
+  //     if (!result) nodeSpecificDecorations.push(gimmeDecoration(from, to, match))
+  //   } else {
+  //     nodeSpecificDecorations.push(gimmeDecoration(from, to, match))
+  //   }
+  // }
+
+  // decorationSet = decorationSet.add(cur, nodeSpecificDecorations)
+
+  // if (editorView?.state)
+  //   dispatch(editorView.state.tr.setMeta(LanguageToolHelpingWords.LanguageToolTransactionName, true))
 }
 
 const debouncedProofreadNodeAndUpdateItsDecorations = debounce(proofreadNodeAndUpdateItsDecorations, 500)
@@ -255,16 +262,20 @@ const debouncedProofreadNodeAndUpdateItsDecorations = debounce(proofreadNodeAndU
 const moreThan500Words = (s: string) => s.trim().split(/\s+/).length >= 500
 
 const getMatchAndSetDecorations = async (doc: PMNode, text: string, originalFrom: number) => {
-  const ltRes: LanguageToolResponse = await (
-    await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        Accept: 'application/json',
-      },
-      body: `text=${encodeURIComponent(text)}&language=auto&enabledOnly=false`,
-    })
-  ).json()
+  // const ltRes: LanguageToolResponse = await (
+  //   await fetch(apiUrl, {
+  //     method: 'POST',
+  //     headers: {
+  //       'Content-Type': 'application/x-www-form-urlencoded',
+  //       Accept: 'application/json',
+  //     },
+  //     body: `text=${encodeURIComponent(text)}&language=auto&enabledOnly=false`,
+  //   })
+  // ).json()
+
+  // Using mocked response from './mock.json'
+  await new Promise((r) => setTimeout(r, 500)) // mocking the waiting of the response from server
+  const ltRes: LanguageToolResponse = mockedResponse
 
   const { matches } = ltRes
 
@@ -365,11 +376,12 @@ const proofreadAndDecorateWholeDoc = async (doc: PMNode, url: string) => {
   const requests = chunksOf500Words.map(({ text, from }) => getMatchAndSetDecorations(doc, text, from))
 
   if (editorView) dispatch(editorView.state.tr.setMeta(LanguageToolHelpingWords.LoadingTransactionName, true))
-  Promise.all(requests).then(() => {
-    if (editorView) dispatch(editorView.state.tr.setMeta(LanguageToolHelpingWords.LoadingTransactionName, false))
-  })
 
-  proofReadInitially = true
+  Promise.all(requests)
+    .then(() => {
+      if (editorView) dispatch(editorView.state.tr.setMeta(LanguageToolHelpingWords.LoadingTransactionName, false))
+    })
+    .finally(() => (proofReadInitially = true))
 }
 
 const debouncedProofreadAndDecorate = debounce(proofreadAndDecorateWholeDoc, 1000)

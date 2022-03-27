@@ -3,7 +3,7 @@
     <button @click="updateHtml">Copy editor html</button>
     <button @click="proofread">Proofread</button>
 
-    <span>{{ loading ? 'Loading' : 'Done' }}</span>
+    <img :class="{ rotate: loading, icon: true }" :src="LoadingIcon" alt="Loading Icon" />
   </section>
 
   <editor-content class="content" v-if="editor" :editor="editor" />
@@ -41,6 +41,7 @@ import StarterKit from '@tiptap/starter-kit'
 import { LanguageTool, LanguageToolHelpingWords } from './extensions'
 import { content } from './text'
 import { Match } from '@/types'
+import { LoadingIcon } from '../assets'
 
 const match = ref<Match>(null)
 
@@ -62,8 +63,6 @@ const editor = useEditor({
   onTransaction({ transaction: tr }) {
     if (tr.getMeta(LanguageToolHelpingWords.LoadingTransactionName)) loading.value = true
     else loading.value = false
-
-    console.log(loading.value)
   },
 })
 
@@ -86,13 +85,15 @@ const ignoreSuggestion = () => editor.value.commands.ignoreLanguageToolSuggestio
 .editor-menubar {
   display: flex;
   gap: 1rem;
+  padding: 1em 0;
 
   button {
     padding: 0.5rem;
     text-transform: capitalize;
     border: none;
-    background-color: white;
-    box-shadow: 0 0 10px rgba($color: #000000, $alpha: 0.25);
+    background-color: rgba($color: black, $alpha: 0.5);
+    color: white;
+    border: 1px solid aliceblue;
     border-radius: 6px;
     cursor: pointer;
     transition: all 0.2s ease-in-out;
@@ -161,11 +162,11 @@ const ignoreSuggestion = () => editor.value.commands.ignoreLanguageToolSuggestio
 .bubble-menu > .bubble-menu-section-container {
   display: flex;
   flex-direction: column;
-  background-color: white;
+  background-color: rgba($color: black, $alpha: 0.9);
   padding: 8px;
   border-radius: 8px;
-  box-shadow: 0 0 10px rgba($color: black, $alpha: 0.25);
   max-width: 400px;
+  border: 1px solid aliceblue;
 
   .suggestions-section {
     display: flex;
@@ -187,5 +188,19 @@ const ignoreSuggestion = () => editor.value.commands.ignoreLanguageToolSuggestio
       max-width: fit-content;
     }
   }
+}
+
+@keyframes rotate {
+  100% {
+    transform: scale(1.5) rotate(2turn);
+  }
+}
+
+.icon {
+  transform: scale(1.5);
+}
+
+.rotate {
+  animation: rotate 1s linear infinite;
 }
 </style>
