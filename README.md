@@ -4,6 +4,10 @@ Extension for integrating [Languagetool](https://languagetool.org/) with [TipTap
 
 Special thanks to https://github.com/rezaffm for sponsoring this project.
 
+## Demo:
+
+- Try it out at https://tiptap-languagetool.vercel.app/
+
 https://user-images.githubusercontent.com/45892659/148092446-86816377-82c7-40be-940f-fa37e4f5a972.mp4
 
 ## How to use
