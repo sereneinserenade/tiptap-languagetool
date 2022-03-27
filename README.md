@@ -6,7 +6,7 @@ Special thanks to https://github.com/rezaffm for sponsoring this project.
 
 ## Demo:
 
-- Try it out at https://tiptap-languagetool.vercel.app/
+- Try it out at https://tiptap-languagetool.vercel.app/. The code for demo is in [`mocked-demo` branch](https://github.com/sereneinserenade/tiptap-languagetool/tree/mocked-demo).
 
 https://user-images.githubusercontent.com/45892659/148092446-86816377-82c7-40be-940f-fa37e4f5a972.mp4
 
