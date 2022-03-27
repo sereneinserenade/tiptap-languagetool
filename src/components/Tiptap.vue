@@ -1,37 +1,57 @@
 <template>
-  <section class="editor-menubar">
-    <button @click="updateHtml">Copy editor html</button>
-    <button @click="proofread">Proofread</button>
+  <main class="flex flex-col items-center">
+    <section class="title flex justify-between items-center">
+      <h2>Tiptap LanguageTool Demo</h2>
+      <section>
+        <a class="flex gap-1" target="”_blank”" href="https://github.com/sereneinserenade/tiptap-languagetool">
+          <img class="github-link" :src="GithubIcon" alt="Github Link" />
 
-    <img :class="{ rotate: loading, icon: true }" :src="LoadingIcon" alt="Loading Icon" />
-  </section>
-
-  <editor-content class="content" v-if="editor" :editor="editor" />
-
-  <bubble-menu
-    class="bubble-menu"
-    v-if="editor"
-    :editor="editor"
-    :tippy-options="{ placement: 'bottom', animation: 'fade' }"
-  >
-    <section class="bubble-menu-section-container">
-      <section class="message-section">
-        {{ matchMessage }}
-
-        <button class="ignore-suggestion-button" @click="ignoreSuggestion">XXX</button>
-      </section>
-      <section class="suggestions-section">
-        <article
-          v-for="(replacement, i) in replacements"
-          @click="() => acceptSuggestion(replacement)"
-          :key="i + replacement.value"
-          class="suggestion"
-        >
-          {{ replacement.value }}
-        </article>
+          <h3>Repository</h3>
+        </a>
       </section>
     </section>
-  </bubble-menu>
+
+    <hr />
+
+    <section class="editor-menubar">
+      <section class="flex gap-1">
+        <button @click="updateHtml">Copy editor html</button>
+
+        <button @click="proofread">Proofread</button>
+
+        <img :class="{ rotate: loading, icon: true }" :src="LoadingIcon" alt="Loading Icon" />
+      </section>
+    </section>
+
+    <hr />
+
+    <editor-content class="content" v-if="editor" :editor="editor" />
+
+    <bubble-menu
+      class="bubble-menu"
+      v-if="editor"
+      :editor="editor"
+      :tippy-options="{ placement: 'bottom', animation: 'fade' }"
+    >
+      <section class="bubble-menu-section-container">
+        <section class="message-section">
+          {{ matchMessage }}
+
+          <button class="ignore-suggestion-button" @click="ignoreSuggestion">XXX</button>
+        </section>
+        <section class="suggestions-section">
+          <article
+            v-for="(replacement, i) in replacements"
+            @click="() => acceptSuggestion(replacement)"
+            :key="i + replacement.value"
+            class="suggestion"
+          >
+            {{ replacement.value }}
+          </article>
+        </section>
+      </section>
+    </bubble-menu>
+  </main>
 </template>
 
 <script setup lang="ts">
@@ -41,7 +61,7 @@ import StarterKit from '@tiptap/starter-kit'
 import { LanguageTool, LanguageToolHelpingWords } from './extensions'
 import { content } from './text'
 import { Match } from '@/types'
-import { LoadingIcon } from '../assets'
+import { LoadingIcon, GithubIcon } from '../assets'
 
 const match = ref<Match>(null)
 
@@ -64,6 +84,7 @@ const editor = useEditor({
     if (tr.getMeta(LanguageToolHelpingWords.LoadingTransactionName)) loading.value = true
     else loading.value = false
   },
+  autofocus: 'start',
 })
 
 const replacements = computed(() => match.value?.replacements || [])
@@ -82,10 +103,51 @@ const ignoreSuggestion = () => editor.value.commands.ignoreLanguageToolSuggestio
 </script>
 
 <style lang="scss">
+.flex {
+  display: flex;
+}
+
+.flex-col {
+  flex-direction: column;
+}
+
+.justify-between {
+  justify-content: space-between;
+}
+
+.items-center {
+  align-items: center;
+}
+
+.gap-1 {
+  gap: 1em;
+}
+
+.github-link {
+  transform: scale(1.5);
+}
+
+a,
+a:hover,
+a:focus,
+a:active {
+  text-decoration: none;
+  color: inherit;
+}
+
+.content,
+.title,
+hr {
+  width: 50%;
+}
+
 .editor-menubar {
   display: flex;
   gap: 1rem;
-  padding: 1em 0;
+  padding: 1em;
+  justify-content: space-between;
+  align-items: center;
+  width: 50%;
 
   button {
     padding: 0.5rem;
@@ -144,19 +206,6 @@ const ignoreSuggestion = () => editor.value.commands.ignoreLanguageToolSuggestio
   &-focused {
     outline: none !important;
   }
-}
-
-.flex {
-  display: flex;
-
-  div {
-    width: 50%;
-  }
-}
-
-.content {
-  max-width: 50%;
-  min-width: 50%;
 }
 
 .bubble-menu > .bubble-menu-section-container {
