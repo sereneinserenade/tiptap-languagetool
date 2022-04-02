@@ -10,6 +10,11 @@ Special thanks to https://github.com/rezaffm for sponsoring this project.
 
 https://user-images.githubusercontent.com/45892659/148092446-86816377-82c7-40be-940f-fa37e4f5a972.mp4
 
+## Stargazers
+
+[![Stargazers repo roster for @sereneinserenade/tiptap-languagetool](https://reporoster.com/stars/dark/sereneinserenade/tiptap-languagetool)](https://github.com/sereneinserenade/tiptap-languagetool/stargazers)
+
+
 ## How to use
 
 Copy the [languagetool.ts](src/components/extensions/languagetool.ts) or [languagetool.js](dist/languagetool.js) file in your project depending on whether you use TypeScript or not. Then import the extension from that file and give it to the TipTap.
