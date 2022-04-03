@@ -81,7 +81,7 @@ Now showing the suggestion on click, so now in the vue component where you've im
 </bubble-menu>
 ```
 
-You can implement your own styles or copy the ones in [Tiptap.vue](src/components/Tiptap.vue).
+You can implement your own styles or copy the ones in [Tiptap.vue](https://github.com/sereneinserenade/tiptap-languagetool/blob/main/src/components/Tiptap.vue#L85-L191).
 
 -------------------------------------------------------------
 -------------------------------------------------------------
