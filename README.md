@@ -2,7 +2,7 @@
 
 Extension for integrating [Languagetool](https://languagetool.org/) with [TipTap](https://tiptap.dev). You can have your self-hosted instance of LanguageTool, details are [here](https://dev.languagetool.org/http-server). 
 
-Special thanks to https://github.com/rezaffm for sponsoring this project.
+Special thanks to https://github.com/rezaffm for sponsoring this project. __You too__ can `support` this project by __⭐️ing the repo.__
 
 ## Demo:
 
