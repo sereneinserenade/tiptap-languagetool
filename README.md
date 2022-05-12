@@ -1,20 +1,20 @@
 # tiptap-languagetool
 
-Extension for integrating [Languagetool](https://languagetool.org/) with [TipTap](https://tiptap.dev). You can have your self-hosted instance of LanguageTool, details are [here](https://dev.languagetool.org/http-server). 
+Extension for integrating [Languagetool](https://languagetool.org/) with [TipTap](https://tiptap.dev). You can have your self-hosted instance of LanguageTool, details for that are [here](https://dev.languagetool.org/http-server). 
 
-Special thanks to https://github.com/rezaffm for sponsoring this project. __You too__ can `support` this project by __⭐️ing the repo.__
+Special thanks to [@rezaffm](https://github.com/rezaffm) for sponsoring this project. If you **👍 / ❤️ what I'm doing**, consider **🌟ing the repo**, **I** and the **Open-Source-Community** appreciate it very much ❤️.
 
-## Demo:
+## Live Demo:
 
-- You can try out a version with mocked data at https://tiptap-languagetool.vercel.app/. The code for demo is in [`mocked-demo` branch](https://github.com/sereneinserenade/tiptap-languagetool/tree/mocked-demo).
+You can try out live-demo with mocked data at https://tiptap-languagetool.vercel.app/ or look at the demo-video below. The code for demo is in [`mocked-demo` branch](https://github.com/sereneinserenade/tiptap-languagetool/tree/mocked-demo).
 
-https://user-images.githubusercontent.com/45892659/148092446-86816377-82c7-40be-940f-fa37e4f5a972.mp4
+<details>
+  <summary> <b> Demo Video </b> </summary>
+ 
+  https://user-images.githubusercontent.com/45892659/148092446-86816377-82c7-40be-940f-fa37e4f5a972.mp4
+</details>
 
-## Stargazers
-
-[![Stargazers repo roster for @sereneinserenade/tiptap-languagetool](https://reporoster.com/stars/dark/sereneinserenade/tiptap-languagetool)](https://github.com/sereneinserenade/tiptap-languagetool/stargazers)
-
-
+  
 ## How to use
 
 Copy the [languagetool.ts](src/components/extensions/languagetool.ts) or [languagetool.js](dist/languagetool.js) file in your project depending on whether you use TypeScript or not. Then import the extension from that file and give it to the TipTap.
@@ -83,10 +83,16 @@ Now showing the suggestion on click, so now in the vue component where you've im
 
 You can implement your own styles or copy the ones in [Tiptap.vue](https://github.com/sereneinserenade/tiptap-languagetool/blob/main/src/components/Tiptap.vue#L85-L191).
 
--------------------------------------------------------------
--------------------------------------------------------------
 
-## Stuff that nobody really cares about(Project setup)
+## Stargazers
+
+[![Stargazers repo roster for @sereneinserenade/tiptap-languagetool](https://reporoster.com/stars/dark/sereneinserenade/tiptap-languagetool)](https://github.com/sereneinserenade/tiptap-languagetool/stargazers)
+
+---
+
+<details>
+  <summary> Project Setup(Stuff that nobody really cares about) </summary>
+  
 ```
 npm install
 ```
@@ -108,3 +114,4 @@ npm run lint
 
 ### Customize configuration
 See [Configuration Reference](https://cli.vuejs.org/config/).
+</details>
