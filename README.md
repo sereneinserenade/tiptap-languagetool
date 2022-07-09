@@ -2,11 +2,13 @@
 
 Extension for integrating [Languagetool](https://languagetool.org/) with [TipTap](https://tiptap.dev). You can have your self-hosted instance of LanguageTool, details for that are [here](https://dev.languagetool.org/http-server). 
 
-A ⭐️ to the repo if you 👍 / ❤️  what I'm doing would be much appreciated. If you're using this extension and making money from it, it'd be very kind of you to [:heart: Sponsor me](https://github.com/sponsors/laike9m). If you're looking for a **dev to work you on your project's Rich Text Editor** with or as **a frontend developer, [DM me on Discord/Twitter/LinkedIn](https://github.com/sereneinserenade)👨‍💻🤩.
+A ⭐️ to the repo if you 👍 / ❤️  what I'm doing would be much appreciated. If you're using this extension and making money from it, it'd be very kind of you to [:heart: Sponsor me](https://github.com/sponsors/sereneinserenade). If you're looking for a **dev to work you on your project's Rich Text Editor** with or as **a frontend developer, [DM me on Discord/Twitter/LinkedIn](https://github.com/sereneinserenade)👨‍💻🤩.
+
+I've made a bunch of extensions for Tiptap 2, some of them are **Google Docs like Commenting**, **Search and Replace**, **Resizable Images and Videos** with tiptap. You can check it our here https://github.com/sereneinserenade#a-glance-of-my-projects.
 
 Special thanks to [@rezaffm](https://github.com/rezaffm) for sponsoring this project. 
 
-## Live Demo:
+## Live Demo
 
 You can try out live-demo with mocked data at https://tiptap-languagetool.vercel.app/ or look at the demo-video below. The code for demo is in [`mocked-demo` branch](https://github.com/sereneinserenade/tiptap-languagetool/tree/mocked-demo).
 
