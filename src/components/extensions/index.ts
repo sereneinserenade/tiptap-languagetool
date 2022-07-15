@@ -1,2 +1,2 @@
+export { BubbleMenu } from './BubbleMenu'
 export * from './languagetool'
-export { Paragraph } from './paragraph'

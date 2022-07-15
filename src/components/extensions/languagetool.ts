@@ -1,10 +1,36 @@
+/**
+ * Taken from 
+ * https://github.com/sereneinserenade/tiptap-languagetool/blob/main/src/components/extensions/languagetool.ts
+ * 
+ * MIT License
+
+ * Copyright (c) 2022 Jeet Mandaliya
+
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 import { Extension } from '@tiptap/core'
-import { Decoration, DecorationSet, EditorView } from 'prosemirror-view'
-import { Plugin, PluginKey, Transaction } from 'prosemirror-state'
-import { Node as PMNode } from 'prosemirror-model'
-import { debounce } from 'lodash'
-import { v4 as uuidv4 } from 'uuid'
 import { Dexie } from 'dexie'
+import { debounce } from 'lodash'
+import { Node as PMNode } from 'prosemirror-model'
+import { Plugin, PluginKey, Transaction } from 'prosemirror-state'
+import { Decoration, DecorationSet, EditorView } from 'prosemirror-view'
 
 // *************** TYPES *****************
 export interface Software {
@@ -91,6 +117,12 @@ declare module '@tiptap/core' {
       toggleProofreading: () => ReturnType
 
       ignoreLanguageToolSuggestion: () => ReturnType
+
+      resetLanguageToolMatch: () => ReturnType
+
+      toggleLanguageTool: () => ReturnType
+
+      getLanguageToolState: () => ReturnType
     }
   }
 }
@@ -111,6 +143,8 @@ interface LanguageToolOptions {
 interface LanguageToolStorage {
   match?: Match
   loading?: boolean
+  matchRange?: { from: number; to: number }
+  active: boolean
 }
 // *************** OVER: TYPES *****************
 
@@ -118,7 +152,15 @@ let editorView: EditorView
 
 let decorationSet: DecorationSet
 
-let db: Dexie
+const db = new Dexie('LanguageToolIgnoredSuggestions')
+
+db.version(1).stores({
+  ignoredWords: `
+    ++id,
+    &value,
+    documentId
+  `,
+})
 
 let extensionDocId: string | number
 
@@ -128,53 +170,62 @@ let textNodesWithPosition: TextNodesWithPosition[] = []
 
 let match: Match | undefined = undefined
 
+let matchRange: { from: number; to: number }
+
 let proofReadInitially = false
+
+let isLanguageToolActive = true
 
 export enum LanguageToolHelpingWords {
   LanguageToolTransactionName = 'languageToolTransaction',
   MatchUpdatedTransactionName = 'matchUpdated',
+  MatchRangeUpdatedTransactionName = 'matchRangeUpdated',
   LoadingTransactionName = 'languageToolLoading',
 }
 
 const dispatch = (tr: Transaction) => editorView.dispatch(tr)
 
-const updateMatch = (m?: Match) => {
+const updateMatchAndRange = (m?: Match, range?) => {
   if (m) match = m
   else match = undefined
 
-  editorView.dispatch(editorView.state.tr.setMeta('matchUpdated', true))
+  if (range) matchRange = range
+  else matchRange = undefined
+
+  const tr = editorView.state.tr
+  tr.setMeta(LanguageToolHelpingWords.MatchUpdatedTransactionName, true)
+  tr.setMeta(LanguageToolHelpingWords.MatchRangeUpdatedTransactionName, true)
+
+  editorView.dispatch(tr)
 }
 
-const selectElementText = (el: EventTarget) => {
-  const range = document.createRange()
-  range.selectNode(el as HTMLSpanElement)
-
-  const sel = window.getSelection()
-  sel?.removeAllRanges()
-  sel?.addRange(range)
-}
-
-const mouseEnterEventListener = (e: Event) => {
+const mouseEventsListener = (e: Event) => {
   if (!e.target) return
-  selectElementText(e.target)
 
-  const matchString = (e.target as HTMLSpanElement).getAttribute('match')
+  const matchString = (e.target as HTMLSpanElement).getAttribute('match')?.trim()
 
-  if (matchString) updateMatch(JSON.parse(matchString))
-  else updateMatch()
+  if (!matchString) {
+    console.error('No match string provided', { matchString })
+    return
+  }
+
+  const { match, from, to } = JSON.parse(matchString)
+
+  if (matchString) updateMatchAndRange(match, { from, to })
+  else updateMatchAndRange()
 }
 
-const mouseLeaveEventListener = () => updateMatch()
+const debouncedMouseEventsListener = debounce(mouseEventsListener, 50)
 
 const addEventListenersToDecorations = () => {
-  const decos = document.querySelectorAll('span.lt')
+  const decorations = document.querySelectorAll('span.lt')
 
-  if (decos.length) {
-    decos.forEach((el) => {
-      el.addEventListener('click', mouseEnterEventListener)
-      el.addEventListener('mouseleave', mouseLeaveEventListener)
-    })
-  }
+  if (!decorations.length) return
+
+  decorations.forEach((el) => {
+    el.addEventListener('mouseover', debouncedMouseEventsListener)
+    el.addEventListener('mouseenter', debouncedMouseEventsListener)
+  })
 }
 
 export function changedDescendants(
@@ -185,6 +236,7 @@ export function changedDescendants(
 ): void {
   const oldSize = old.childCount,
     curSize = cur.childCount
+
   outer: for (let i = 0, j = 0; i < curSize; i++) {
     const child = cur.child(i)
 
@@ -209,62 +261,22 @@ const gimmeDecoration = (from: number, to: number, match: Match) =>
   Decoration.inline(from, to, {
     class: `lt lt-${match.rule.issueType}`,
     nodeName: 'span',
-    match: JSON.stringify(match),
-    uuid: uuidv4(),
+    match: JSON.stringify({ match, from, to }),
   })
-
-const proofreadNodeAndUpdateItsDecorations = async (node: PMNode, offset: number, cur: PMNode) => {
-  if (editorView?.state) dispatch(editorView.state.tr.setMeta(LanguageToolHelpingWords.LoadingTransactionName, true))
-
-  const ltRes: LanguageToolResponse = await (
-    await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        Accept: 'application/json',
-      },
-      body: `text=${encodeURIComponent(node.textContent)}&language=auto&enabledOnly=false`,
-    })
-  ).json()
-
-  decorationSet = decorationSet.remove(decorationSet.find(offset, offset + node.nodeSize))
-
-  const nodeSpecificDecorations: Decoration[] = []
-
-  for (const match of ltRes.matches) {
-    const from = match.offset + offset
-    const to = from + match.length
-
-    if (extensionDocId) {
-      const content = editorView.state.doc.textBetween(from, to)
-      const result = await (db as any).ignoredWords.get({ value: content, documentId: extensionDocId })
-
-      if (!result) nodeSpecificDecorations.push(gimmeDecoration(from, to, match))
-    } else {
-      nodeSpecificDecorations.push(gimmeDecoration(from, to, match))
-    }
-  }
-
-  decorationSet = decorationSet.add(cur, nodeSpecificDecorations)
-
-  if (editorView) dispatch(editorView.state.tr.setMeta(LanguageToolHelpingWords.LanguageToolTransactionName, true))
-}
-
-const debouncedProofreadNodeAndUpdateItsDecorations = debounce(proofreadNodeAndUpdateItsDecorations, 500)
 
 const moreThan500Words = (s: string) => s.trim().split(/\s+/).length >= 500
 
 const getMatchAndSetDecorations = async (doc: PMNode, text: string, originalFrom: number) => {
-  const ltRes: LanguageToolResponse = await (
-    await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        Accept: 'application/json',
-      },
-      body: `text=${encodeURIComponent(text)}&language=auto&enabledOnly=false`,
-    })
-  ).json()
+  const postOptions = {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Accept: 'application/json',
+    },
+    body: `text=${encodeURIComponent(text)}&language=en-US&enabledOnly=false`,
+  }
+
+  const ltRes: LanguageToolResponse = await (await fetch(apiUrl, postOptions)).json()
 
   const { matches } = ltRes
 
@@ -284,39 +296,56 @@ const getMatchAndSetDecorations = async (doc: PMNode, text: string, originalFrom
     }
   }
 
-  decorationSet = decorationSet.remove(decorationSet.find(originalFrom, originalFrom + text.length))
+  const decorationsToRemove = decorationSet.find(originalFrom, originalFrom + text.length)
+
+  decorationSet = decorationSet.remove(decorationsToRemove)
 
   decorationSet = decorationSet.add(doc, decorations)
 
   if (editorView) dispatch(editorView.state.tr.setMeta(LanguageToolHelpingWords.LanguageToolTransactionName, true))
 
-  setTimeout(addEventListenersToDecorations)
+  setTimeout(addEventListenersToDecorations, 100)
 }
 
-const proofreadAndDecorateWholeDoc = async (doc: PMNode, url: string) => {
-  apiUrl = url
+const debouncedGetMatchAndSetDecorations = debounce(getMatchAndSetDecorations, 300)
 
+let lastOriginalFrom = 0
+
+const onNodeChanged = (doc: PMNode, text: string, originalFrom: number) => {
+  if (originalFrom !== lastOriginalFrom) getMatchAndSetDecorations(doc, text, originalFrom)
+  else debouncedGetMatchAndSetDecorations(doc, text, originalFrom)
+
+  lastOriginalFrom = originalFrom
+}
+
+const proofreadAndDecorateWholeDoc = async (doc: PMNode, nodePos = 0) => {
   textNodesWithPosition = []
 
   let index = 0
   doc?.descendants((node, pos) => {
-    if (node.isText) {
-      if (textNodesWithPosition[index]) {
-        const text = textNodesWithPosition[index].text + node.text
-        const from = textNodesWithPosition[index].from
-        const to = from + text.length
-
-        textNodesWithPosition[index] = { text, from, to }
-      } else {
-        const text = node.text as string
-        const from = pos
-        const to = pos + text.length
-
-        textNodesWithPosition[index] = { text, from, to }
-      }
-    } else {
+    if (!node.isText) {
       index += 1
+      return
     }
+
+    const intermediateTextNodeWIthPos = {
+      text: '',
+      from: -1,
+      to: -1,
+    }
+
+    if (textNodesWithPosition[index]) {
+      intermediateTextNodeWIthPos.text = textNodesWithPosition[index].text + node.text
+      intermediateTextNodeWIthPos.from = textNodesWithPosition[index].from + nodePos
+      intermediateTextNodeWIthPos.to =
+        intermediateTextNodeWIthPos.from + intermediateTextNodeWIthPos.text.length + nodePos
+    } else {
+      intermediateTextNodeWIthPos.text = node.text
+      intermediateTextNodeWIthPos.from = pos + nodePos
+      intermediateTextNodeWIthPos.to = pos + nodePos + node.text.length
+    }
+
+    textNodesWithPosition[index] = intermediateTextNodeWIthPos
   })
 
   textNodesWithPosition = textNodesWithPosition.filter(Boolean)
@@ -325,10 +354,10 @@ const proofreadAndDecorateWholeDoc = async (doc: PMNode, url: string) => {
 
   const chunksOf500Words: { from: number; text: string }[] = []
 
-  let upperFrom = 0
+  let upperFrom = 0 + nodePos
   let newDataSet = true
 
-  let lastPos = 1
+  let lastPos = 1 + nodePos
 
   for (const { text, from, to } of textNodesWithPosition) {
     if (!newDataSet) {
@@ -372,7 +401,7 @@ const proofreadAndDecorateWholeDoc = async (doc: PMNode, url: string) => {
   proofReadInitially = true
 }
 
-const debouncedProofreadAndDecorate = debounce(proofreadAndDecorateWholeDoc, 1000)
+const debouncedProofreadAndDecorate = debounce(proofreadAndDecorateWholeDoc, 500)
 
 export const LanguageTool = Extension.create<LanguageToolOptions, LanguageToolStorage>({
   name: 'languagetool',
@@ -390,6 +419,11 @@ export const LanguageTool = Extension.create<LanguageToolOptions, LanguageToolSt
     return {
       match: match,
       loading: false,
+      matchRange: {
+        from: -1,
+        to: -1,
+      },
+      active: isLanguageToolActive,
     }
   },
 
@@ -398,13 +432,12 @@ export const LanguageTool = Extension.create<LanguageToolOptions, LanguageToolSt
       proofread:
         () =>
         ({ tr }) => {
-          proofreadAndDecorateWholeDoc(tr.doc, this.options.apiUrl)
+          apiUrl = this.options.apiUrl
+
+          proofreadAndDecorateWholeDoc(tr.doc)
           return true
         },
-      toggleProofreading: () => () => {
-        // TODO: implement toggling proofreading
-        return false
-      },
+
       ignoreLanguageToolSuggestion:
         () =>
         ({ editor }) => {
@@ -417,51 +450,94 @@ export const LanguageTool = Extension.create<LanguageToolOptions, LanguageToolSt
 
           const content = doc.textBetween(from, to)
 
-          ;(db as any).ignoredWords.add({ value: content, documentId: `${extensionDocId}` })
+          ;(db as any).ignoredWords.add({
+            value: content,
+            documentId: `${extensionDocId}`,
+          })
 
           return false
         },
+      resetLanguageToolMatch:
+        () =>
+        ({
+          editor: {
+            view: {
+              dispatch,
+              state: { tr },
+            },
+          },
+        }) => {
+          match = null
+          matchRange = null
+
+          dispatch(
+            tr
+              .setMeta(LanguageToolHelpingWords.MatchRangeUpdatedTransactionName, true)
+              .setMeta(LanguageToolHelpingWords.MatchUpdatedTransactionName, true),
+          )
+
+          return false
+        },
+
+      toggleLanguageTool:
+        () =>
+        ({ commands }) => {
+          isLanguageToolActive = !isLanguageToolActive
+
+          if (isLanguageToolActive) commands.proofread()
+          else commands.resetLanguageToolMatch()
+
+          this.storage.active = isLanguageToolActive
+
+          return false
+        },
+
+      getLanguageToolState: () => () => isLanguageToolActive,
     }
   },
 
   addProseMirrorPlugins() {
-    const { apiUrl, documentId } = this.options
+    const { apiUrl: optionsApiUrl, documentId } = this.options
+
+    apiUrl = optionsApiUrl
 
     return [
       new Plugin({
-        key: new PluginKey('languagetool'),
+        key: new PluginKey('languagetoolPlugin'),
         props: {
           decorations(state) {
             return this.getState(state)
           },
           attributes: {
             spellcheck: 'false',
+            isLanguageToolActive: `${isLanguageToolActive}`,
+          },
+
+          handlePaste(view) {
+            const { docChanged } = view.state.tr
+
+            debugger
+            if (docChanged) debouncedProofreadAndDecorate(view.state.tr.doc)
+
+            return false
           },
         },
         state: {
-          init: (config, state) => {
+          init: (_, state) => {
             decorationSet = DecorationSet.create(state.doc, [])
 
-            if (this.options.automaticMode) proofreadAndDecorateWholeDoc(state.doc, apiUrl)
+            if (this.options.automaticMode) proofreadAndDecorateWholeDoc(state.doc)
 
-            if (documentId) {
-              extensionDocId = documentId
-
-              db = new Dexie('LanguageToolIgnoredSuggestions')
-
-              db.version(1).stores({
-                ignoredWords: `
-                  ++id,
-                  &value,
-                  documentId
-                `,
-              })
-            }
+            if (documentId) extensionDocId = documentId
 
             return decorationSet
           },
-          apply: (tr, oldPluginState, oldEditorState) => {
+          apply: (tr) => {
+            if (!isLanguageToolActive) return DecorationSet.empty
+
             const matchUpdated = tr.getMeta(LanguageToolHelpingWords.MatchUpdatedTransactionName)
+            const matchRangeUpdated = tr.getMeta(LanguageToolHelpingWords.MatchRangeUpdatedTransactionName)
+
             const loading = tr.getMeta(LanguageToolHelpingWords.LoadingTransactionName)
 
             if (loading) this.storage.loading = true
@@ -469,29 +545,54 @@ export const LanguageTool = Extension.create<LanguageToolOptions, LanguageToolSt
 
             if (matchUpdated) this.storage.match = match
 
+            if (matchRangeUpdated) this.storage.matchRange = matchRange
+
             const languageToolDecorations = tr.getMeta(LanguageToolHelpingWords.LanguageToolTransactionName)
 
             if (languageToolDecorations) return decorationSet
 
             if (tr.docChanged && this.options.automaticMode) {
-              if (!proofReadInitially) debouncedProofreadAndDecorate(tr.doc, apiUrl)
-              else changedDescendants(oldEditorState.doc, tr.doc, 0, debouncedProofreadNodeAndUpdateItsDecorations)
+              if (!proofReadInitially) debouncedProofreadAndDecorate(tr.doc)
+              else {
+                const {
+                  selection: { from, to },
+                } = tr
+
+                let changedNodeWithPos: { node: PMNode; pos: number }
+
+                const currentBlockNode = tr.doc.descendants((node, pos) => {
+                  if (!node.isBlock) return false
+
+                  const [nodeFrom, nodeTo] = [pos, pos + node.nodeSize]
+
+                  if (!(nodeFrom <= from && to <= nodeTo)) return
+
+                  changedNodeWithPos = { node, pos }
+                })
+
+                if (changedNodeWithPos) {
+                  onNodeChanged(
+                    changedNodeWithPos.node,
+                    changedNodeWithPos.node.textContent,
+                    changedNodeWithPos.pos + 1,
+                  )
+                }
+              }
             }
 
             decorationSet = decorationSet.map(tr.mapping, tr.doc)
 
-            setTimeout(addEventListenersToDecorations)
+            setTimeout(addEventListenersToDecorations, 100)
 
             return decorationSet
           },
         },
-        view: (view) => {
-          return {
-            update(view) {
-              editorView = view
-            },
-          }
-        },
+        view: () => ({
+          update: (view) => {
+            editorView = view
+            setTimeout(addEventListenersToDecorations, 100)
+          },
+        }),
       }),
     ]
   },
