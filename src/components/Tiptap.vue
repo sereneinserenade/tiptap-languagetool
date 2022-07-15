@@ -13,6 +13,7 @@
     v-if="editor"
     :editor="editor"
     :tippy-options="{ placement: 'bottom', animation: 'fade' }"
+    :should-show="({ editor }) => shouldShow({ editor })"
   >
     <section class="bubble-menu-section-container">
       <section class="message-section">
@@ -36,23 +37,43 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { useEditor, EditorContent, BubbleMenu, Editor } from '@tiptap/vue-3'
+import { useEditor, EditorContent, Editor } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
-import { LanguageTool, LanguageToolHelpingWords } from './extensions'
+
+import { LanguageTool, LanguageToolHelpingWords, BubbleMenu } from './extensions'
 import { content } from './text'
 import { Match } from '@/types'
 
+const shouldShow = ({ editor }) => {
+  const match = editor.storage.languagetool.match
+  const matchRange = editor.storage.languagetool.matchRange
+
+  const { from, to } = editor.state.selection
+
+  return !!match && !!matchRange && matchRange.from <= from && to <= matchRange.to
+}
+
 const match = ref<Match>(null)
+
+const matchRange = ref<{ from: number; to: number }>(null)
 
 const loading = ref(false)
 
 const updateMatch = (editor: Editor) => {
-  match.value = editor.extensionStorage.languagetool.match
+  match.value = editor.storage.languagetool.match
+  matchRange.value = editor.storage.languagetool.matchRange
 }
 
 const editor = useEditor({
   content,
-  extensions: [StarterKit, LanguageTool.configure({ automaticMode: true, documentId: '1' })],
+  extensions: [
+    StarterKit,
+    LanguageTool.configure({
+      automaticMode: true,
+      documentId: '1',
+      apiUrl: 'https://your.languagetool.url/v2/check', // replace this with your actual url
+    }),
+  ],
   onUpdate({ editor }) {
     setTimeout(() => updateMatch(editor as any))
   },
@@ -62,8 +83,6 @@ const editor = useEditor({
   onTransaction({ transaction: tr }) {
     if (tr.getMeta(LanguageToolHelpingWords.LoadingTransactionName)) loading.value = true
     else loading.value = false
-
-    console.log(loading.value)
   },
 })
 
@@ -74,7 +93,7 @@ const matchMessage = computed(() => match.value?.message || 'No Message')
 const updateHtml = () => navigator.clipboard.writeText(editor.value.getHTML())
 
 const acceptSuggestion = (sug) => {
-  editor.value.commands.insertContent(sug.value)
+  editor.value.commands.insertContentAt(matchRange.value, sug.value)
 }
 
 const proofread = () => editor.value.commands.proofread()
