@@ -92,7 +92,9 @@ const matchMessage = computed(() => match.value?.message || 'No Message')
 
 const updateHtml = () => navigator.clipboard.writeText(editor.value.getHTML())
 
-const acceptSuggestion = (sug) => editor.value.commands.insertContent(sug.value)
+const acceptSuggestion = (sug) => {
+  editor.value.commands.insertContentAt(matchRange.value, sug.value)
+}
 
 const proofread = () => editor.value.commands.proofread()
 

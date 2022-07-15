@@ -283,16 +283,16 @@ const getMatchAndSetDecorations = async (doc: PMNode, text: string, originalFrom
   const decorations: Decoration[] = []
 
   for (const match of matches) {
-    const from = match.offset + originalFrom
-    const to = from + match.length
+    const docFrom = match.offset + originalFrom
+    const docTo = docFrom + match.length
 
     if (extensionDocId) {
-      const content = doc.textBetween(from, to)
+      const content = text.substring(match.offset - 1, match.offset + match.length - 1)
       const result = await (db as any).ignoredWords.get({ value: content })
 
-      if (!result) decorations.push(gimmeDecoration(from, to, match))
+      if (!result) decorations.push(gimmeDecoration(docFrom, docTo, match))
     } else {
-      decorations.push(gimmeDecoration(from, to, match))
+      decorations.push(gimmeDecoration(docFrom, docTo, match))
     }
   }
 
