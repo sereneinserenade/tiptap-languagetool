@@ -516,7 +516,6 @@ export const LanguageTool = Extension.create<LanguageToolOptions, LanguageToolSt
           handlePaste(view) {
             const { docChanged } = view.state.tr
 
-            debugger
             if (docChanged) debouncedProofreadAndDecorate(view.state.tr.doc)
 
             return false
